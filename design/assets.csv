@@ -1,0 +1,67 @@
+id,role,type,description,size/ratio,style line ref,source
+diner-room,environment shell,3d-procedural,"diner interior: vinyl floor, cream walls, big windows, pass counter, front door (rel scale: doorway 2.0)",~22x14 units,blocks 1-4,procedural
+griddle-station,cook station (flapjacks/burger),3d-procedural,"flat-top griddle with vent hood, hot orange heat glow when on",1.6,blocks 1-3,procedural
+pan-station,cook station (trout),3d-procedural,"range with cast-iron pan, burns fast",1.4,blocks 1-3,procedural
+beverage-station,drink station,3d-procedural,"coffee machine with carafe + matcha tap (green toggle)",1.2,blocks 1-3,procedural
+sink-station,plate return,3d-procedural,"double-basin sink, dirty stack in, clean stack out",1.4,blocks 1-3,procedural
+plate-shelf,plate source,3d-procedural,"wall shelf holding stack of 12 cream plates",1.0,blocks 1-3,procedural
+ingredient-crates,food sources,3d-procedural,"three labeled crates: batter, bison patty, trout",0.8 each,blocks 1-3,procedural
+tables-chairs,seating,3d-procedural,"square 4-top tables, chairs, counter stools (6 tables + 3 stools)",table 0.9,blocks 1-3,procedural
+door-sign,shift start switch,3d-procedural,"flip sign CLOSED/OPEN on the front door — interact to start the shift",0.5,blocks 1-3 + hazard hue,procedural
+extinguisher,fire tool,3d-procedural,"red wall-hook extinguisher, foam cone spray when used",0.7,hazard hue,procedural
+food-flapjacks,carryable dish,3d-procedural,"stack of 3 amber flapjacks on plate, butter pat",0.3,blocks 1-3,procedural
+food-burger,carryable dish,3d-procedural,"bison burger with sesame bun on plate",0.3,blocks 1-3,procedural
+food-trout,carryable dish,3d-procedural,"whole pan-fried trout on plate, lemon wedge",0.3,blocks 1-3,procedural
+mug,carryable drink,3d-procedural,"diner mug: brown fill = coffee, green fill = matcha",0.2,blocks 1-3,procedural
+char-cook,player avatar x4,3d-procedural,"stubby capsule cook, oversized head, tiny arms, apron in red/blue/yellow/green (hero = 1.0)",1.0,blocks 2-3,procedural
+char-flock,customer archetype,3d-procedural,"trio of identical athleisure women, big sunglasses, phones out",1.0,blocks 2-3,procedural
+char-squatter,customer archetype,3d-procedural,"hoodie guy, AirPods, glowing laptop he carries everywhere — grab-draggable ragdoll",1.0,blocks 2-3,procedural
+char-zillow,customer archetype,3d-procedural,"appraising couple in quarter-zips, one always pointing at fixtures",1.0,blocks 2-3,procedural
+char-dale,customer archetype,3d-procedural,"rancher: brim hat, gray mustache, denim — sits at corner stool",1.0,blocks 2-3,procedural
+fx-fire,hazard particles,procedural,"flickering low-poly flame billboards + ember sparks, spreads tile to tile",—,hazard hue,procedural
+fx-foam,tool particles,procedural,"white foam blobs from extinguisher cone",—,block 3,procedural
+fx-smoke,warning particles,procedural,"gray puffs above an overcooking item — the pre-fire warning",—,block 4,procedural
+ui-ticket-rail,HUD,procedural-2d,"paper tickets sliding along top rail: dish icons + patience bar",top strip,blocks 3+5,procedural
+ui-rent-hud,HUD,procedural-2d,"RENT $X / $1850 counter + shift clock, landlord text pop-ins",top-left,blocks 3+5,procedural
+ui-endcard,close screen,procedural-2d,"P&L card + Yowl review (stars + review text) + MADE RENT / ASSET REPOSITIONED verdict",modal,blocks 3+5,procedural
+ui-lobby,entry screen,procedural-2d,"name + apron color pick, big invite-link chalkboard with copy button",modal,blocks 3+5,procedural
+ui-nametags,player identity,procedural-2d,"canvas-texture name sprite floating over each cook, ticket-white with ink outline",sprite ~1.6x0.4,blocks 3+5,procedural
+ui-station-labels,onboarding/readability,procedural-2d,"small projected DOM chips naming the stations (GRIDDLE / PAN / DRINKS / SINK / PLATES / PANTRY)",10px chips,blocks 3+5,procedural
+ui-confetti,win celebration,procedural-2d,"falling receipt confetti on the MADE RENT end card",CSS anim,block 3,procedural
+fx-camshake,impact juice,procedural,"decaying camera shake on yeet/thud/ignite/break",—,—,procedural
+fx-sun-drift,living light,procedural,"sun color/angle drifts noon→sunset across the 8-min shift; morning gold in lobby; scene bg + fog follow",—,block 4,procedural
+fx-light-shafts,atmosphere,procedural,"additive golden shafts from the north windows + drifting dust motes (Points)",—,block 4,procedural
+env-ceiling-fans,room life,3d-procedural,"two spinning ceiling fans over the dining room",0.9,blocks 1-3,procedural
+env-screen-door,room life,3d-procedural,"hinged screen door swings open on every door chime",1.0,blocks 1-3,procedural
+env-clouds-birds,outside life,3d-procedural,"soft clouds drifting over the mountains + an occasional 3-bird flyby",—,blocks 1+4,procedural
+env-elk,outside spectacle,3d-procedural,"a full elk wanders past the north windows every few minutes, antlers gliding over the wall; sometimes stops to look in",shoulder ~1.5,blocks 1-3,procedural
+char-cook-legs,readability,3d-procedural,"scissor-walking legs + run lean on every cook (no more floating capsules)",—,block 2,procedural
+fx-emotes,customer life,procedural-2d,"canvas emoji bubbles over customers: thinking / ordering / eating / filming / appraising / laptop / coffee",sprite 0.6,blocks 3+5,procedural
+prop-table-food,customer life,3d-procedural,"plate of food appears in front of eating customers; Dale keeps a mug on the counter once served",0.3,blocks 1-3,procedural
+fx-money-pop,serve feedback,procedural-2d,"floating +$N text sprite rises at the table on payment",sprite,block 3,procedural
+fx-steam,kitchen life,procedural,"gentle steam wisps over cooking food and the coffee urns; foam spray cone while extinguishing",—,block 4,procedural
+fx-item-spin,physics feel,procedural,"airborne items tumble; landing dust puff",—,—,procedural
+fx-fire-light,hazard glow,procedural,"one flickering orange point light follows the fire; DOM ember vignette while anything burns",—,hazard hue,procedural
+ui-hud-juice,HUD life,procedural-2d,"ticket slide-in, low-patience pulse, rent-chip flash on payment, final-minute clock pulse",CSS,blocks 3+5,procedural
+env-supply-yard,second biome,3d-procedural,"meadow + river with shimmer overlay + fishing docks + pines behind the diner (supply phase)",z 7..24,blocks 1+4,procedural
+env-truck-f250,stock bank,3d-procedural,"the '87 F-250: rust-red cab/bed/wheels; stock crates grow in the bed as you bank",4.1x1.8,blocks 1-3,procedural
+env-payphone,sysco gamble,3d-procedural,"teal payphone on a post — $80 call, 60/40 delivery or road's out",1.6 tall,blocks 1-3,procedural
+env-huck-bushes,forage,3d-procedural,"4 huckleberry bushes; berry spheres disappear as picked",r 0.55,blocks 1-3,procedural
+char-bear,supply hazard,3d-procedural,"brown bear: ambles from the treeline, ROARS, spills pails, eats a bush clean",shoulder ~1.3,blocks 1-3,procedural
+fx-fishing,minigame kit,procedural,"rod in hand + line to a red bobber that dips on the bite; ❗ bite indicator",—,blocks 2-3,procedural
+prop-fish,premium stock carry,3d-procedural,"caught river trout (silver, tail fin)",0.6,blocks 1-3,procedural
+prop-huck-pail,premium stock carry,3d-procedural,"berry pail with purple dome + handle",0.3,blocks 1-3,procedural
+ui-supply,supply HUD,procedural-2d,"🌆 countdown clock, 🐟/🫐 stock chip, yard labels (RIVER/BERRIES/BANK/PHONE)",chips,blocks 3+5,procedural
+prop-premium-dishes,menu ceiling,3d-procedural,"huckleberry-topped flapjacks + gold-pat river trout dish variants",0.3,blocks 1-3,procedural
+ui-wishlist,upgrades shop,procedural-2d,"HAZEL'S WISH LIST grid on the prep card: 6 upgrade cards with prices, owned/afford states, live bank",2-col grid,blocks 3+5,procedural
+prop-upgrades,bought hardware,3d-procedural,"six physical installations toggled by ownership: brass pass bell, shiny flat-top, second pan burner, chrome espresso machine, walk-in door, dish-pit rack",various,blocks 1-3,procedural
+sfx-sizzle,cooking audio,audio-procedural,"filtered noise sizzle while items cook, intensifies near burn",—,—,procedural
+sfx-ding,service bell,audio-procedural,"bright bell ding when a dish is ready / order up",—,—,procedural
+sfx-chaching,payment,audio-procedural,"register cha-ching on ticket payout",—,—,procedural
+sfx-whoosh,fire audio,audio-procedural,"low whoosh on ignition + crackle loop while burning",—,—,procedural
+sfx-thud,ragdoll audio,audio-procedural,"soft body thud when the Zoom Squatter lands outside",—,—,procedural
+sfx-chime,door chime,audio-procedural,"two-note door chime on customer entry",—,—,procedural
+amb-murmur,ambience,audio-procedural,"low diner crowd murmur, scales with customer count",—,—,procedural
+music-banjo,title/close loop,audio-procedural,"Karplus-Strong plucked-string banjo figure, lazy front-porch tempo",—,—,procedural
+thumbnail,store/OG key art,image,"SHORT STAFFED key art: four stubby cooks mid-chaos in a Montana diner, grease fire, elk head on wall, tickets flying",16:9,FULL FORMULA,generate
+favicon,store icon,image,"round diner OPEN sign badge with tiny mountain silhouette",1:1,FULL FORMULA,generate
