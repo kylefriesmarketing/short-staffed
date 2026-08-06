@@ -18,6 +18,89 @@ const PAL = {
   batter: 0xf5e6c4, patty: 0xa2543c, troutC: 0x9fb6c4, coffee: 0x4a3320, matcha: 0x7fae6a,
   fire: [0xff5a26, 0xffa02e, 0xffd23e],
 };
+// ---- procedural surface textures -------------------------------------------
+// Everything is lit and shaped but UNTEXTURED without these, which is what makes
+// flat-shaded geometry read as "programmer blocks". Drawn to canvas, sampled with
+// WORLD-SPACE uvs (see Merger), so one texture tiles correctly across every prop.
+function cv2(size) { const c = document.createElement('canvas'); c.width = c.height = size; return c; }
+function texFrom(c, rep = 1) {
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4; t.repeat.set(rep, rep);
+  return t;
+}
+function grainTex() {                       // paint / plaster / general surface tooth
+  const c = cv2(256), x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 256, 256);
+  const img = x.getImageData(0, 0, 256, 256), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = 246 + Math.random() * 9;
+    d[i] = d[i + 1] = d[i + 2] = n;
+  }
+  x.putImageData(img, 0, 0);
+  x.globalAlpha = 0.06;
+  for (let i = 0; i < 90; i++) {
+    x.strokeStyle = Math.random() < 0.5 ? '#000' : '#fff';
+    x.lineWidth = 0.6 + Math.random();
+    x.beginPath();
+    const y0 = Math.random() * 256;
+    x.moveTo(0, y0); x.bezierCurveTo(85, y0 + (Math.random() - 0.5) * 14, 170, y0 + (Math.random() - 0.5) * 14, 256, y0);
+    x.stroke();
+  }
+  return c;
+}
+function woodTex() {                        // grain + knots for counters and beams
+  const c = cv2(256), x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 46; i++) {
+    const y0 = Math.random() * 256;
+    x.globalAlpha = 0.1 + Math.random() * 0.16;
+    x.strokeStyle = Math.random() < 0.65 ? '#6b4f33' : '#c9a877';
+    x.lineWidth = 0.7 + Math.random() * 2.2;
+    x.beginPath(); x.moveTo(0, y0);
+    x.bezierCurveTo(64, y0 + (Math.random() - 0.5) * 9, 170, y0 + (Math.random() - 0.5) * 9, 256, y0 + (Math.random() - 0.5) * 5);
+    x.stroke();
+  }
+  x.globalAlpha = 0.16;
+  for (let i = 0; i < 3; i++) {              // knots
+    const kx = Math.random() * 256, ky = Math.random() * 256;
+    for (let r = 10; r > 0; r -= 2) { x.strokeStyle = '#6b4f33'; x.lineWidth = 1.1; x.beginPath(); x.ellipse(kx, ky, r, r * 0.55, 0.5, 0, 7); x.stroke(); }
+  }
+  x.globalAlpha = 1;
+  return c;
+}
+function tileTex() {                        // vinyl tile: grout seam + scuffs, 1 unit/tile
+  const c = cv2(256), x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 256, 256);
+  const g = x.createLinearGradient(0, 0, 256, 256);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(226,222,212,1)');
+  x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+  x.globalAlpha = 0.05;
+  for (let i = 0; i < 240; i++) {           // speckle fleck like real diner vinyl
+    x.fillStyle = Math.random() < 0.5 ? '#000' : '#fff';
+    x.fillRect(Math.random() * 256, Math.random() * 256, 1.6, 1.6);
+  }
+  x.globalAlpha = 1;
+  x.strokeStyle = 'rgba(120,112,98,0.5)'; x.lineWidth = 5;
+  x.strokeRect(0, 0, 256, 256);             // grout at the tile edge
+  x.strokeStyle = 'rgba(255,255,255,0.5)'; x.lineWidth = 2;
+  x.strokeRect(5, 5, 246, 246);
+  return c;
+}
+function brushTex() {                       // brushed stainless
+  const c = cv2(256), x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 256, 256);
+  x.globalAlpha = 0.11;
+  for (let i = 0; i < 320; i++) {
+    x.strokeStyle = Math.random() < 0.5 ? '#000' : '#fff';
+    x.lineWidth = 0.5 + Math.random() * 1.1;
+    const y0 = Math.random() * 256;
+    x.beginPath(); x.moveTo(0, y0); x.lineTo(256, y0 + (Math.random() - 0.5) * 2); x.stroke();
+  }
+  x.globalAlpha = 1;
+  return c;
+}
+
 const mats = new Map();
 function M(color, opt = {}) {
   const key = color + '|' + (opt.e || 0) + '|' + (opt.t || 0) + '|' + (opt.m || 0) + '|' + (opt.r ?? '');
@@ -52,7 +135,7 @@ function mesh(g, mat, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1, ry = 0) {
 // floor and on downward faces, which is what stops a flat-shaded room from
 // looking like untextured blocks.
 class Merger {
-  constructor(ao = true) { this.ao = ao; this.pos = []; this.nor = []; this.col = []; this._c = new THREE.Color(); this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._e = new THREE.Euler(); }
+  constructor(ao = true) { this.ao = ao; this.pos = []; this.nor = []; this.col = []; this.uv = []; this._c = new THREE.Color(); this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._e = new THREE.Euler(); }
   add(geo, color, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) {
     const g = geo.index ? geo.toNonIndexed() : geo.clone();
     this._e.set(rx, ry, rz); this._q.setFromEuler(this._e);
@@ -72,9 +155,16 @@ class Merger {
           if (ny < -0.5) k *= 0.9;                               // undersides
         }
       }
-      this.pos.push(p.getX(i), vy, p.getZ(i));
-      this.nor.push(n.getX(i), ny, n.getZ(i));
+      const vx = p.getX(i), vz = p.getZ(i), nx = n.getX(i), nz = n.getZ(i);
+      this.pos.push(vx, vy, vz);
+      this.nor.push(nx, ny, nz);
       this.col.push(this._c.r * k, this._c.g * k, this._c.b * k);
+      // world-space planar uvs off the dominant normal axis — one texture set
+      // tiles correctly across every box in the room, no per-prop unwrapping
+      const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+      if (ay >= ax && ay >= az) this.uv.push(vx, vz);
+      else if (ax >= az) this.uv.push(vz, vy);
+      else this.uv.push(vx, vy);
     }
     g.dispose();
   }
@@ -83,10 +173,16 @@ class Merger {
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true, flatShading: true,
       roughness: opt.r ?? 0.9, metalness: opt.m ?? 0,
     });
+    if (opt.tex) {
+      mat.map = opt.tex;
+      mat.bumpMap = opt.tex;                 // same canvas drives relief under the sun
+      mat.bumpScale = opt.bump ?? 0.06;
+    }
     if (opt.e) { mat.emissive = new THREE.Color(0xffffff); mat.emissiveIntensity = opt.e; mat.vertexColors = true; }
     const mesh = new THREE.Mesh(g, mat);
     mesh.castShadow = !!opt.cast; mesh.receiveShadow = opt.recv !== false;
@@ -235,9 +331,15 @@ export class World {
 
   // ---- static room -----------------------------------------------------------
   buildRoom() {
-    const m = new Merger();            // matte: walls, wood, floor
+    const mp = new Merger();           // paint/plaster: walls, ceilings, props
+    const mw = new Merger();           // timber: counters, tables, chairs, beams
+    const fl = new Merger();           // floor: gets its own tile texture
     const mt = new Merger();           // metal: stations, chrome, fixtures
     const gl = new Merger(false);      // emissive: lamps, windows, heat strip
+    // route every existing m.add() by colour, so timber picks up wood grain and
+    // everything else picks up plaster tooth without rewriting the whole room
+    const WOODY = new Set([PAL.wood, PAL.woodDark, PAL.top, 0x8a5a3a, 0x9a4a32, 0x8a3f28]);
+    const m = { add: (g2, c, ...r) => (WOODY.has(c) ? mw : mp).add(g2, c, ...r) };
     // checker floor as one merged grid of thin boxes — per-tile jitter + worn patches
     const wearC = new THREE.Color();
     for (let i = 0; i < 24; i++) for (let j = 0; j < 14; j++) {
@@ -248,7 +350,7 @@ export class World {
       const nearDoor = Math.hypot(x - LAYOUT.door.x, z - 6.5) < 2.6;
       const nearGriddle = Math.hypot(x + 8, z + 5) < 2.4;
       if ((nearDoor || nearGriddle) && Math.random() < 0.5) wearC.offsetHSL(0, -0.05, -0.06);
-      m.add(GEO.box, wearC.getHex(), x, -0.05, z, 1, 0.1, 1);
+      fl.add(GEO.box, wearC.getHex(), x, -0.05, z, 1, 0.1, 1);
     }
     // porch + dirt yard outside the door
     m.add(GEO.box, PAL.woodDark, LAYOUT.door.x, -0.06, 8.3, 4.6, 0.1, 2.6);
@@ -369,7 +471,7 @@ export class World {
     mt.add(GEO.box, PAL.steelDark, 1.5, 1.78, -6.45, 0.06, 0.06, 0.34);
     // wire shelf over the pass with spare plates
     mt.add(GEO.box, PAL.steel, -6.5, 1.95, -6.7, 3.4, 0.05, 0.5);
-    for (const px of [-7.6, -6.6, -5.6]) mt.add(GEO.cyl, PAL.white, px, 2.06, -6.7, 0.44, 0.18, 0.44);
+    for (const px of [-7.6, -6.6, -5.6]) mp.add(GEO.cyl, PAL.white, px, 2.06, -6.7, 0.44, 0.18, 0.44); // crockery isn't metal
     m.add(GEO.cyl6, 0x4c5c46, 3.1, 0.55, -6.35, 0.8, 1.1, 0.8);         // bin
     m.add(GEO.box, PAL.wood, -10.6, 1.3, -6.6, 1.3, 0.1, 0.6);          // shelf board
     for (const c of LAYOUT.crates) {                                     // crates
@@ -390,7 +492,7 @@ export class World {
       m.add(GEO.cyl, 0xf5e04a, t.x + 0.48, 0.92, t.z - 0.48, 0.09, 0.16, 0.09);  // mustard
       m.add(GEO.cyl, PAL.white, t.x + 0.36, 0.9, t.z - 0.36, 0.06, 0.12, 0.06);  // salt
       m.add(GEO.cyl, 0x4a4a52, t.x + 0.48, 0.9, t.z - 0.36, 0.06, 0.12, 0.06);   // pepper
-      mt.add(GEO.box, PAL.steel, t.x - 0.44, 0.87, t.z - 0.44, 0.24, 0.18, 0.14); // napkins
+      mt.add(GEO.box, 0xc9d0d8, t.x - 0.44, 0.87, t.z - 0.44, 0.24, 0.18, 0.14); // napkin dispenser
       for (const s of t.seats) {
         const a = Math.atan2(t.x - s.x, t.z - s.z);
         m.add(GEO.box, PAL.wood, s.x, 0.44, s.z, 0.42, 0.09, 0.42, 0, a, 0);      // seat pad
@@ -407,8 +509,10 @@ export class World {
       m.add(GEO.cyl, 0xc44536, s.x, 0.62, s.z, 0.54, 0.14, 0.54);
       m.add(GEO.cyl, 0x8a2f22, s.x, 0.68, s.z, 0.5, 0.04, 0.5);
     }
-    mt.add(GEO.box, 0x4a4a52, 5.9, 1.25, -2.6, 0.8, 0.6, 0.6);          // register on east counter
-    mt.add(GEO.box, 0x2c2c30, 5.9, 1.5, -2.45, 0.5, 0.3, 0.3, -0.5);
+    // ⚠️ a dark body in the METAL group goes black — the register is painted steel
+    mp.add(GEO.box, 0xd8d2c4, 5.9, 1.25, -2.6, 0.8, 0.6, 0.6);          // register on east counter
+    mp.add(GEO.box, 0x8a8f98, 5.9, 1.5, -2.45, 0.5, 0.3, 0.3, -0.5);
+    mt.add(GEO.box, 0xb9c0c8, 5.9, 1.58, -2.6, 0.62, 0.06, 0.5);        // chrome cap
     gl.add(GEO.box, 0x7fd8a0, 5.9, 1.53, -2.38, 0.36, 0.16, 0.02);      // register readout
     // pie case on the pass — glass dome + a whole huckleberry pie
     m.add(GEO.cyl, PAL.white, 3.4, 1.02, -2.6, 0.72, 0.06, 0.72);
@@ -438,14 +542,17 @@ export class World {
     }
     m.add(GEO.box, 0x9a4a32, -6.5, 0.55, -9.6, 1.9, 0.9, 4.2);              // a truck in the lot
     m.add(GEO.box, 0x8a3f28, -6.5, 1.25, -10.4, 1.7, 0.7, 1.7);
-    const room = m.build({ r: 0.92, cast: true });
+    const grain = texFrom(grainTex(), 0.5);
+    const room = mp.build({ r: 0.92, cast: true, tex: grain, bump: 0.05 });
+    const timber = mw.build({ r: 0.72, cast: true, tex: texFrom(woodTex(), 0.45), bump: 0.09 });
+    const floor = fl.build({ r: 0.78, cast: false, tex: texFrom(tileTex(), 1), bump: 0.03 });
     // ⚠️ metalness this high with only a small procedural env renders BLACK —
     // a metal's colour comes entirely from what it reflects. Half-metal plus a
     // boosted env intensity keeps the steel reading as steel.
-    const metal = mt.build({ r: 0.34, m: 0.45, cast: true });
+    const metal = mt.build({ r: 0.34, m: 0.45, cast: true, tex: texFrom(brushTex(), 0.6), bump: 0.02 });
     metal.material.envMapIntensity = 1.6;
     const glow = gl.build({ r: 0.4, e: 1.9, recv: false });
-    this.scene.add(room, metal, glow);
+    this.scene.add(room, timber, floor, metal, glow);
     // glass: pie dome + the door's screen — transparent, so it draws last
     const glass = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, roughness: 0.06, metalness: 0, transmission: 0 });
     const dome = mesh(GEO.sph, glass, 3.4, 1.1, -2.6, 0.86, 0.72, 0.86);
