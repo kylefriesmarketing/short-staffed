@@ -4,6 +4,7 @@ import { Sim, C, LAYOUT, SOLIDS, UPGRADES } from './sim.js';
 import { World } from './world.js';
 import { STR } from './strings.js';
 import { Net } from './net.js';
+import { Voice } from './rtc.js';
 import { audioInit, sfx, beds, banjoLoop, setListener } from './audio.js';
 
 const $ = id => document.getElementById(id);
@@ -26,11 +27,11 @@ function pid() {
 }
 
 // ---- state ----------------------------------------------------------------------
-let world = null, net = null, localSim = null, localAcc = 0, localTick = 0;
-let mySeat = -2, lastSnap = null, joined = false, overShown = false, countLast = -1;
+let world = null, net = null, localSim = null, localAcc = 0, localTick = 0, voice = null;
+let mySeat = -2, lastSnap = null, joined = false, overShown = false, countLast = -1, howtoShown = false;
 const evLog = [];
-const input = { x: 0, z: 0, fx: 0, fz: -1, a: 0, th: 0, ah: false };
-const pred = { x: 0, z: 0, fx: 0, fz: -1, mv: 0, has: false };
+const input = { x: 0, z: 0, fx: 0, fz: -1, a: 0, th: 0, ah: false, sp: false };
+const pred = { x: 0, z: 0, vx: 0, vz: 0, fx: 0, fz: -1, mv: 0, has: false };
 
 // ---- boot UI ----------------------------------------------------------------------
 document.title = STR.title;
@@ -78,30 +79,43 @@ function doJoin() {
         $('hint').textContent = mySeat < 0 ? STR.spectating : STR.waiting;
         applySnap(m.snap);
         banjoLoop(true);
+        if (mySeat >= 0) $('mic').style.display = '';
       },
       snap(s) { applySnap(s); },
       ev(e) { onEvent(e); },
+      rtc(m) { if (voice) voice.onSignal(m); },
       status(s) { if (!lastSnap || lastSnap.ph === 'lobby') $('hint').textContent = s === 'connecting' ? STR.connecting : STR.reconnecting; },
     });
     net.connect(ROOM, { pid: pid(), name, color: myColor });
+    voice = new Voice(net, () => mySeat, () => lastSnap);
+    voice.onstate = st => {
+      $('mic').textContent = st === 'on' ? STR.vcOn : st === 'err' ? STR.vcErr : st === 'conn' ? STR.vcConn : STR.vcOff;
+      $('mic').classList.toggle('live', st === 'on');
+    };
+    $('mic').textContent = STR.vcOff;
+    $('mic').onclick = () => { audioInit(); voice.toggle(); };
   }
 }
 
 // ---- input: keyboard ---------------------------------------------------------------
 const held = new Set();
+let sprintKey = false;
 const KB = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' };
 addEventListener('keydown', e => {
+  if ($('howto').style.display === 'flex') $('howto').style.display = 'none';
   if (e.repeat) return;
   audioInit();
   if (KB[e.code]) { held.add(KB[e.code]); e.preventDefault(); }
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { sprintKey = true; e.preventDefault(); }
   if (e.code === 'KeyE' || e.code === 'Enter') { input.a++; input.ah = true; e.preventDefault(); }
   if (e.code === 'Space') { input.th++; e.preventDefault(); }
 });
 addEventListener('keyup', e => {
   if (KB[e.code]) held.delete(KB[e.code]);
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') sprintKey = false;
   if (e.code === 'KeyE' || e.code === 'Enter') input.ah = false;
 });
-addEventListener('blur', () => { held.clear(); input.ah = false; });
+addEventListener('blur', () => { held.clear(); input.ah = false; sprintKey = false; });
 
 // ---- input: touch -------------------------------------------------------------------
 const touch = { on: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
@@ -131,6 +145,7 @@ $('btnB').addEventListener('pointerdown', e => { e.preventDefault(); audioInit()
 
 // ---- input: gamepad ------------------------------------------------------------------
 const pad = { a: false, b: false };
+let padSprint = false;
 function pollPad() {
   for (const gp of navigator.getGamepads?.() || []) {
     if (!gp) continue;
@@ -138,6 +153,7 @@ function pollPad() {
     const ay = Math.abs(gp.axes[1]) > 0.25 ? gp.axes[1] : 0;
     if (ax || ay) { padVec.x = ax; padVec.z = ay; } else { padVec.x = 0; padVec.z = 0; }
     const a = gp.buttons[0]?.pressed, b = (gp.buttons[2]?.pressed || gp.buttons[7]?.pressed);
+    padSprint = !!gp.buttons[1]?.pressed;
     if (a && !pad.a) { input.a++; }
     input.ah = input.ah || a;
     if (b && !pad.b) input.th++;
@@ -154,6 +170,13 @@ function collideLocal(o, r) {
     if (rd < r && rd > 0.0001) { o.x = px + (rx / rd) * r; o.z = pz + (rz / rd) * r; }
   }
   o.x = Math.max(-C.ROOM_X + C.COOK_R, Math.min(C.ROOM_X - C.COOK_R, o.x));
+  const yard = lastSnap && (lastSnap.ph === 'supply' || lastSnap.ph === 'prep');
+  if (yard) {
+    if (Math.abs(o.x - LAYOUT.door.x) < LAYOUT.door.gap) o.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.YARD_Z - C.COOK_R, o.z));
+    else if (o.z < C.ROOM_Z) o.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.ROOM_Z - C.COOK_R, o.z));
+    else o.z = Math.max(C.ROOM_Z + C.COOK_R, Math.min(C.YARD_Z - C.COOK_R, o.z));
+    return;
+  }
   const outDoor = o.z > C.ROOM_Z - 0.1 && Math.abs(o.x - LAYOUT.door.x) < LAYOUT.door.gap;
   if (!outDoor) o.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.ROOM_Z - C.COOK_R, o.z));
   else o.z = Math.min(C.ROOM_Z + 0.6, o.z);
@@ -162,11 +185,24 @@ function stepPred(dt) {
   if (!joined || mySeat < 0 || !lastSnap) return;
   const me = lastSnap.pl.find(p => p.i === mySeat);
   if (!me) return;
-  if (!pred.has) { pred.x = me.x; pred.z = me.z; pred.has = true; }
-  if (me.b) { pred.mv = 0; return; }
-  const mult = me.dc ? C.DRAG_MULT : 1;
-  pred.x += input.x * C.COOK_SPEED * mult * dt;
-  pred.z += input.z * C.COOK_SPEED * mult * dt;
+  if (!pred.has) { pred.x = me.x; pred.z = me.z; pred.vx = 0; pred.vz = 0; pred.has = true; }
+  // server-owned states (stunned / carried / airborne / busy): ride the authority
+  if (me.sn || me.ar || (me.cb != null && me.cb >= 0) || me.b) {
+    pred.x = me.x; pred.z = me.z; pred.vx = 0; pred.vz = 0; pred.mv = 0;
+    pred.fx = input.fx; pred.fz = input.fz;
+    return;
+  }
+  let mult = 1;
+  if (me.dc) mult *= C.DRAG_MULT;
+  if (me.so) mult *= C.SOAK_MULT;
+  const sprint = input.sp;
+  if (sprint) mult *= C.SPRINT_MULT;
+  const tx = input.x * C.COOK_SPEED * mult, tz = input.z * C.COOK_SPEED * mult;
+  let kk = sprint ? C.SPRINT_ACCEL : 18;
+  if (!sprint && Math.hypot(pred.vx, pred.vz) > C.COOK_SPEED + 0.2) kk = 3.5;
+  const k = Math.min(1, kk * dt);
+  pred.vx += (tx - pred.vx) * k; pred.vz += (tz - pred.vz) * k;
+  pred.x += pred.vx * dt; pred.z += pred.vz * dt;
   collideLocal(pred, C.COOK_R);
   pred.fx = input.fx; pred.fz = input.fz;
   pred.mv = Math.hypot(input.x, input.z) > 0.1 ? 1 : 0;
@@ -335,6 +371,16 @@ function showEndcard(ec) {
   const revs = (ec.reviews || []).map(k => STR.reviews[k]).filter(Boolean);
   $('e-yowl').innerHTML = revs.length ? `<div class="yhead">${STR.yowlHead}</div>` + revs.map(r =>
     `<div class="rev"><span class="stars">${'★'.repeat(r.s)}${'☆'.repeat(5 - r.s)}</span>${r.t}</div>`).join('') : '';
+  // the blame card
+  if (ec.crew && ec.crew.length) {
+    const top = f => { let b = null; for (const c of ec.crew) { const v = f(c); if (v > 0 && (!b || v > f(b))) b = c; } return b; };
+    const lines = [];
+    const mvp = top(c => c.sv); if (mvp) lines.push([STR.bl_mvp, mvp.name, mvp.sv, STR.bl_mvp_d]);
+    const men = top(c => c.br + c.fi + c.sl); if (men) lines.push([STR.bl_menace, men.name, men.br + men.fi + men.sl, STR.bl_menace_d]);
+    const bou = top(c => c.yt + c.fy); if (bou) lines.push([STR.bl_bouncer, bou.name, bou.yt + bou.fy, STR.bl_bouncer_d]);
+    const ang = top(c => c.ca); if (ang) lines.push([STR.bl_angler, ang.name, ang.ca, STR.bl_angler_d]);
+    $('e-blame').innerHTML = lines.map(l => `<div class="brow"><span>${l[0]}</span><b>${l[1]}</b><i>${l[2]} · ${l[3]}</i></div>`).join('');
+  } else $('e-blame').innerHTML = '';
   sfx('over');
 }
 
@@ -346,10 +392,24 @@ function toast(txt, cls = '') {
   setTimeout(() => el.classList.add('show'), 20);
   setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 400); }, 4200);
 }
+const nameOf = s => (lastSnap && lastSnap.pl.find(p => p.i === s)?.n) || 'Somebody';
 function onEvent(e) {
   evLog.push(e); if (evLog.length > 200) evLog.shift();
   sfx(e.k, e.x, e.z);
   world && world.onEvent(e);
+  // blame has a name on it
+  const blKey = e.k === 'break' ? 'break_' : e.k;
+  if (STR.blame[blKey] && (e.s != null || e.v != null)) {
+    toast(STR.blame[blKey].replace('{N}', nameOf(e.s)).replace('{M}', nameOf(e.v != null ? e.v : e.s)), e.k === 'ignite' ? 'fire' : '');
+    if (e.k === 'ignite' || e.k === 'break') { /* named toast replaces the generic one */ }
+  } else if (e.k === 'break') toast(STR.evToasts.break_);
+  if (e.k === 'open' && lastSnap && lastSnap.dy === 1 && !howtoShown) {
+    howtoShown = true;
+    $('h-title').textContent = STR.howtoTitle;
+    $('h-lines').innerHTML = STR.howtoLines.map(l => `<div>${l}</div>`).join('');
+    $('howto').style.display = 'flex';
+    setTimeout(() => $('howto').style.display = 'none', 9000);
+  }
   if (e.k === 'text' && STR.texts[e.s]) toast(STR.texts[e.s], e.s.startsWith('ll_') || e.s === 'zillow_out' ? 'll' : '');
   if (e.k === 'tip') toast(`tip +$${e.a}`, 'money');
   if (e.k === 'picked' && STR.specials[e.s]) toast(STR.pickedToast + STR.specials[e.s].n, 'll');
@@ -362,8 +422,7 @@ function onEvent(e) {
   }
   if (e.k === 'ignite') { $('firevig').style.opacity = 0.9; setTimeout(() => { if (lastSnap && !lastSnap.fi.length) $('firevig').style.opacity = 0; }, 700); }
   if (e.k === 'cha' || e.k === 'tip') { $('rent').classList.add('flash'); setTimeout(() => $('rent').classList.remove('flash'), 550); }
-  if (STR.evToasts[e.k]) toast(STR.evToasts[e.k], e.k === 'ignite' ? 'fire' : '');
-  if (e.k === 'break') toast(STR.evToasts.break_);
+  if (STR.evToasts[e.k] && !(e.k === 'ignite' && e.s != null)) toast(STR.evToasts[e.k], e.k === 'ignite' ? 'fire' : '');
 }
 
 // ---- highlight (interact affordance) -------------------------------------------------------
@@ -393,12 +452,14 @@ function computeInput() {
   let x = 0, z = 0;
   if (held.has('up')) z -= 1; if (held.has('down')) z += 1;
   if (held.has('left')) x -= 1; if (held.has('right')) x += 1;
-  if (touch.on) { x += touch.dx; z += touch.dy; }
+  let touchMag = 0;
+  if (touch.on) { x += touch.dx; z += touch.dy; touchMag = Math.hypot(touch.dx, touch.dy); }
   x += padVec.x; z += padVec.z;
   const l = Math.hypot(x, z); if (l > 1) { x /= l; z /= l; }
   input.x = x; input.z = z;
+  input.sp = sprintKey || padSprint || touchMag > 1.35;
   if (l > 0.15) { input.fx = x / (l || 1); input.fz = z / (l || 1); }
-  if (net) { net.input.x = input.x; net.input.z = input.z; net.input.fx = input.fx; net.input.fz = input.fz; net.input.a = input.a; net.input.th = input.th; net.input.ah = input.ah; }
+  if (net) { net.input.x = input.x; net.input.z = input.z; net.input.fx = input.fx; net.input.fz = input.fz; net.input.a = input.a; net.input.th = input.th; net.input.ah = input.ah; net.input.sp = input.sp; }
 }
 function stepLocal(dt) {
   if (!LOCAL || !localSim) return;
@@ -421,6 +482,7 @@ function frame(now) {
   updateHighlight();
   if (world) {
     setListener(pred.has ? pred.x : 0, pred.has ? pred.z : 0);
+    if (voice) { voice.updateSpatial(pred.has ? pred : { x: 0, z: 0 }, lastSnap); world.speakSet = voice.speaking; }
     world.render(dt, pred.has ? pred : null);
     ensureLabels(); updateLabels();
   }

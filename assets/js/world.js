@@ -114,7 +114,7 @@ export class World {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xf7cf9e);
     this.scene.fog = new THREE.Fog(0xf7cf9e, 26, 60);
-    this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 120);
+    this.camera = new THREE.PerspectiveCamera(56, 1, 0.1, 120);
     this.camTgt = new THREE.Vector3(0, 0, 1);
     this.camPos = new THREE.Vector3(0, 12, 10);
     this.sun = new THREE.DirectionalLight(0xffd9a0, 1.35); this.sun.position.set(-7, 11, 5);
@@ -572,12 +572,15 @@ export class World {
       let v = this.pl.get(p.i);
       if (!v || v.color !== p.c || v.name !== p.n) { if (v) this.scene.remove(v.g); v = { g: this.buildCook(p.c, p.n), color: p.c, name: p.n, tx: p.x, tz: p.z, carryKey: null }; this.scene.add(v.g); this.pl.set(p.i, v); v.g.position.set(p.x, 0, p.z); }
       v.d = p; v.tx = p.x; v.tz = p.z;
-      const ck = p.h ? this.itemKey(p.h) : (p.dc ? 'CU' : null);
+      const ck = (p.h ? this.itemKey(p.h) : (p.dc ? 'CU' : '')) + '|' + (p.xs || []).map(m => this.itemKey(m)).join(',');
       if (ck !== v.carryKey) {
         v.carryKey = ck;
         const slot = v.g.userData.carry;
         while (slot.children.length) slot.remove(slot.children[0]);
-        if (p.h) slot.add(this.buildItem(p.h));
+        if (p.h) {
+          slot.add(this.buildItem(p.h));
+          (p.xs || []).forEach((m, ix) => { const im = this.buildItem(m); im.position.y = 0.18 * (ix + 1); im.rotation.y = (ix + 1) * 0.4; slot.add(im); });
+        }
       }
       v.g.visible = !p.off;
     }
@@ -722,6 +725,11 @@ export class World {
     if (e.k === 'douse') for (let i = 0; i < 5; i++) this.puff(this.smoke, e.x, 0.8, e.z, { life: 1.0, v: 1, vy: 1.6, s: 0.4 });
     if (e.k === 'ignite') this.shake(0.3);
     if (e.k === 'yeet') this.shake(0.1);
+    if (e.k === 'yeetf') this.shake(0.16);
+    if (e.k === 'landf') { this.shake(0.22); for (let i = 0; i < 4; i++) this.puff(this.smoke, e.x, 0.15, e.z, { life: 0.5, v: 1.8, vy: 0.7, s: 0.3 }); }
+    if (e.k === 'splash') { this.shake(0.2); for (let i = 0; i < 9; i++) this.puff(this.foam, e.x, 0.3, e.z, { life: 0.8, v: 2.6, vy: 3.2, s: 0.22 }); }
+    if (e.k === 'slip') { for (let i = 0; i < 3; i++) this.puff(this.pop, e.x, 0.3, e.z, { life: 0.5, v: 2.2, vy: 1.6, s: 0.35 }); }
+    if (e.k === 'tumble') this.shake(0.12);
     if (e.k === 'chime') this.doorT = 1.15;
     if (e.k === 'cha') this.moneyPop('+$' + e.a, e.x, e.z);
     if (e.k === 'order') { const pos = e.tb != null ? LAYOUT.tables[e.tb] : (e.st != null ? LAYOUT.stools[e.st] : null); if (pos) this.emote('📝', pos.x, pos.z); }
@@ -769,20 +777,38 @@ export class World {
     for (const [seat, v] of this.pl) {
       const g = v.g, d = v.d; if (!d) continue;
       let tx = v.tx, tz = v.tz, fx = d.fx, fz = d.fz;
-      if (seat === this.you && myPred) { tx = myPred.x; tz = myPred.z; fx = myPred.fx; fz = myPred.fz; }
-      g.position.x += (tx - g.position.x) * (seat === this.you ? 1 : lerpK);
-      g.position.z += (tz - g.position.z) * (seat === this.you ? 1 : lerpK);
+      const own = seat === this.you && myPred && !d.sn && !d.ar && !(d.cb >= 0);
+      if (own) { tx = myPred.x; tz = myPred.z; fx = myPred.fx; fz = myPred.fz; }
+      g.position.x += (tx - g.position.x) * (own ? 1 : lerpK);
+      g.position.z += (tz - g.position.z) * (own ? 1 : lerpK);
       const targetYaw = Math.atan2(fx, fz);
       g.rotation.y += shortest(g.rotation.y, targetYaw) * lerpK;
       const u = g.userData;
-      const moving = d.mv || (seat === this.you && myPred && myPred.mv);
+      const moving = d.mv || (own && myPred.mv);
       u.ph += dt * (moving ? 11 : 2.2);
-      g.position.y = moving ? Math.abs(Math.sin(u.ph)) * 0.06 : 0;
+      // body states: airborne cartwheels, carried slumps, stunned sees stars, stacks lean
+      if (d.ar) { g.position.y = d.y || 0.5; g.rotation.z += dt * 8; }
+      else if (d.cb >= 0) { g.position.y = 0.85; g.rotation.z += (1.35 - g.rotation.z) * lerpK; u.armL.rotation.x = Math.sin(t * 13) * 1.1; u.armR.rotation.x = -Math.sin(t * 13) * 1.1; }
+      else {
+        g.rotation.z += ((d.wb ? Math.sin(t * 12) * 0.3 * d.wb : 0) - g.rotation.z) * Math.min(1, dt * 9);
+        g.position.y = moving ? Math.abs(Math.sin(u.ph)) * 0.06 : 0;
+        if (d.sn) { g.rotation.z = Math.sin(t * 20) * 0.12; if (Math.random() < 0.05) this.emote('💫', g.position.x, g.position.z); }
+      }
+      if (d.so && Math.random() < 0.1) this.puff(this.steam, g.position.x, 0.6, g.position.z, { life: 0.7, v: 0.4, vy: -0.2, s: 0.09 });
+      if (!u.micS) {
+        u.micS = new THREE.Sprite(new THREE.SpriteMaterial({ map: emojiTexture('🔊'), transparent: true, depthWrite: false }));
+        u.micS.scale.set(0.5, 0.5, 1); u.micS.position.y = 2.15; u.micS.visible = false; g.add(u.micS);
+      }
+      u.micS.visible = !!(this.speakSet && this.speakSet.has(seat));
+      const inert = d.ar || d.cb >= 0;
       const carrying = !!d.h || !!d.dc;
-      const armT = carrying ? -1.5 : d.sp ? -1.1 : moving ? Math.sin(u.ph) * 0.7 : 0.08;
-      const armT2 = carrying ? -1.5 : d.sp ? -1.1 : moving ? -Math.sin(u.ph) * 0.7 : -0.08;
-      u.armL.rotation.x += (armT - u.armL.rotation.x) * lerpK * 1.6;
-      u.armR.rotation.x += (armT2 - u.armR.rotation.x) * lerpK * 1.6;
+      if (!inert) {
+        const armT = carrying ? -1.5 : d.sp ? -1.1 : moving ? Math.sin(u.ph) * 0.7 : 0.08;
+        const armT2 = carrying ? -1.5 : d.sp ? -1.1 : moving ? -Math.sin(u.ph) * 0.7 : -0.08;
+        u.armL.rotation.x += (armT - u.armL.rotation.x) * lerpK * 1.6;
+        u.armR.rotation.x += (armT2 - u.armR.rotation.x) * lerpK * 1.6;
+      }
+      u.carry.rotation.z = Math.sin(t * 12) * (d.wb || 0) * 0.5;
       u.head.rotation.z = Math.sin(u.ph * 0.5) * 0.05;
       const legT = moving ? Math.sin(u.ph) * 0.85 : 0;
       u.legL.rotation.x += (legT - u.legL.rotation.x) * lerpK * 1.8;
@@ -933,8 +959,8 @@ export class World {
     let target = null;
     if (this.you >= 0 && this.pl.has(this.you)) target = this.pl.get(this.you).g.position;
     if (target) {
-      this.camTgt.lerp(new THREE.Vector3(target.x * 0.85, 0, target.z * 0.8 + 0.4), Math.min(1, dt * 4));
-      this.camPos.lerp(new THREE.Vector3(this.camTgt.x, 11.6, this.camTgt.z + 8.6), Math.min(1, dt * 4));
+      this.camTgt.lerp(new THREE.Vector3(target.x * 0.9, 0, target.z * 0.88 + 0.3), Math.min(1, dt * 4.5));
+      this.camPos.lerp(new THREE.Vector3(this.camTgt.x, 8.4, this.camTgt.z + 6.4), Math.min(1, dt * 4.5));
     } else {
       this.camTgt.lerp(new THREE.Vector3(0, 0, 0.5), dt);
       this.camPos.lerp(new THREE.Vector3(0, 15.5, 12), dt);

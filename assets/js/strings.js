@@ -72,6 +72,27 @@ export const STR = {
   },
   supplyChip: '🌆',
   supplyLabels: { river: 'RIVER — CAST HERE', berries: 'HUCKLEBERRIES', truck: 'BANK STOCK', phone: 'SYSCO PHONE ($80)' },
+  blame: {
+    break_: '{N} broke a plate.',
+    ignite: '🔥 {N} started the grease fire.',
+    slip: '{N} ate it.',
+    tumble: "{N}'s stack came down.",
+    yeetf: '{N} YEETED {M}.',
+    grabf: '{N} has {M}. Nobody panic.',
+    landf: '{M} has landed.',
+    splash: '💦 {M} is in the river.',
+    thud: '{N} relocated the squatter. Personally.',
+  },
+  bl_mvp: '⭐ MVP of the pass', bl_menace: '💀 The Menace', bl_bouncer: '🚪 The Bouncer', bl_angler: '🎣 The Angler',
+  bl_menace_d: 'broken + fires + wipeouts', bl_mvp_d: 'plates served', bl_bouncer_d: 'humans thrown', bl_angler_d: 'trout landed',
+  howtoTitle: 'FIRST SHIFT AT THE GRUBSTAKE',
+  howtoLines: [
+    'Cook what the tickets ask. Carry it to the table.',
+    'Make RENT by close. Ridgeline Capital is "so grateful."',
+    'E — grab / use · SPACE — throw · SHIFT — sprint',
+    'Yes, you can pick up your coworkers. SPACE throws them too.',
+  ],
+  vcOff: '🎤 voice', vcOn: '🎤 LIVE', vcErr: '🎤 blocked', vcConn: '🎤 …',
 
   reviews: {
     r_squat: { s: 2, t: '“Ambiance: rustic. Service: chaotic. A large man carried my table companion outside.”' },

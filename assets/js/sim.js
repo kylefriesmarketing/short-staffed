@@ -6,7 +6,10 @@ export const C = {
   TICK: 0.05, ROOM_X: 12, ROOM_Z: 7,
   COOK_R: 0.38, COOK_SPEED: 4.2, DRAG_MULT: 0.86, CUST_R: 0.36, CUST_SPEED: 1.7,
   REACH: 1.6, THROW_V: 8.5, THROW_UP: 4.8, GRAV: 20, BREAK_V: 6.5,
-  SHIFT_LEN: 480, CLOSE_LEN: 8, COUNT_LEN: 3,
+  SHIFT_LEN: 420, CLOSE_LEN: 8, COUNT_LEN: 3,
+  SPRINT_MULT: 1.45, SPRINT_ACCEL: 6.5, STACK_MAX: 2, WOB_TUMBLE: 1,
+  SLIP_SPEED: 3.4, STUN_SLIP: 0.9, STUN_LAND: 1.2, STUN_DROP: 0.3,
+  PL_THROW_V: 9.5, PL_THROW_UP: 5.2, CARRY_RELEASE: 6, CARRY_MULT: 0.75, SOAK_T: 8, SOAK_MULT: 0.9,
   RENT: [520, 520, 1000, 1350, 1700], RENT_ZILLOW: 25,
   PAY: { flapjacks: 45, burger: 55, trout: 70, coffee: 15, matcha: 20 },
   TIP_MAX: 0.5, PATIENCE: 75, DALE_AURA: 0.75, FIRE_PANIC: 3,
@@ -14,7 +17,7 @@ export const C = {
   BURN_T: { batter: 12, patty: 12, trout: 7 }, IGNITE_T: 6,
   FIRE_SPREAD: 8, FIRE_CAP: 6, DOUSE_T: 1.8, SPRAY_RANGE: 2.8, SCORCH_T: 5,
   PLATES: 12, WASH_T: 5, EAT_T: 20, ORDER_T: 5, POUR_T: 1.2,
-  SPAWN_RATE: [1.5, 2.5, 2.5, 3.5, 3.5, 4.5, 4.5, 5.5], // parties/min by shift minute
+  SPAWN_RATE: [2.5, 3, 3.2, 4, 4.2, 5, 5.5, 6], // parties/min by shift minute (hot open, hotter close)
   CREW_MULT: [0.65, 0.65, 1.0, 1.3, 1.6], PARTY_CAP_BASE: 2, PARTY_CAP_PER: 2,
   FLOCK_FAST: 45, FLOCK_BONUS_CAP: 3, SQUAT_AT: [90, 300], ZILLOW_AT: 150,
   ZILLOW_STAY: 120, ZILLOW_SPOT_T: 8, DALE_AT: 20, DALE_REFILL: 90, DALE_GIVEUP: 45,
@@ -132,6 +135,7 @@ export class Sim {
     this.stock = { trout: 0, huck: 0 }; this.supplyT = 0; this.bushes = []; this.bear = null; this.syscoUsed = false;
     this.upgrades = [];
     this._larpDone = 0; this._kaleDone = 0; this._seqDone = 0; this._contagionNext = false;
+    this.pstats = {};
   }
   rentTarget() { return Math.round(C.RENT[this.crew()] * Math.pow(C.RENT_SCALE + (this.gent / 100) * C.GENT_RENTMULT, this.day - 1)); }
   bumpCred(n) { this.cred = Math.max(0, Math.min(100, this.cred + n)); }
@@ -160,18 +164,25 @@ export class Sim {
       pid, seat, name: String(name || 'Cook').slice(0, 16), color: (color | 0) % 4,
       x: 8.2 + seat * 0.7, z: 5.4, yaw: 0, fx: 0, fz: -1, vx: 0, vz: 0,
       held: null, heldCu: null, busyT: 0, spray: false, cast: false, castT: 0, biteT: 0,
-      in: { x: 0, z: 0, ah: false, fx: 0, fz: -1 }, aSeen: 0, thSeen: 0, aPend: 0, thPend: 0,
+      stack: [], wob: 0, stunT: 0, carriedBy: -1, heldPl: -1, air: null, y: 0, soakT: 0, carryT: 0,
+      slideX: 0, slideZ: 0, svx: 0, svz: 0,
+      in: { x: 0, z: 0, ah: false, sp: false, fx: 0, fz: -1 }, aSeen: 0, thSeen: 0, aPend: 0, thPend: 0,
       conn: true, graceT: 0,
     };
     this.players.set(pid, p);
+    if (!this.pstats) this.pstats = {};
+    this.pstats[seat] = this.pstats[seat] || { sv: 0, br: 0, fi: 0, yt: 0, fy: 0, sl: 0, ca: 0, bk: 0, name: p.name };
+    this.pstats[seat].name = p.name;
     return seat;
   }
+  bySeat(seat) { for (const p of this.players.values()) if (p.seat === seat) return p; return null; }
+  pst(seat) { if (!this.pstats) this.pstats = {}; return this.pstats[seat] = this.pstats[seat] || { sv: 0, br: 0, fi: 0, yt: 0, fy: 0, sl: 0, ca: 0, bk: 0, name: '?' }; }
   leave(pid) { const p = this.players.get(pid); if (p) { p.conn = false; p.graceT = C.GRACE; this.dropAll(p); } }
   input(pid, m) {
     const p = this.players.get(pid); if (!p) return;
     const f = v => (Number.isFinite(v) ? v : 0);
     let x = f(m.x), z = f(m.z); const l = Math.hypot(x, z); if (l > 1) { x /= l; z /= l; }
-    p.in.x = x; p.in.z = z; p.in.ah = !!m.ah;
+    p.in.x = x; p.in.z = z; p.in.ah = !!m.ah; p.in.sp = !!m.sp;
     const fx = f(m.fx), fz = f(m.fz), fl = Math.hypot(fx, fz);
     if (fl > 0.3) { p.in.fx = fx / fl; p.in.fz = fz / fl; }
     const a = m.a | 0, th = m.th | 0;
@@ -213,6 +224,24 @@ export class Sim {
     }
     const order = [...this.players.values()].sort((a, b) => a.seat - b.seat);
     for (const p of order) this.tickPlayer(p, dt);
+    // carried friends ride the carrier; everyone else gets personal space (barely)
+    for (const p of order) {
+      if (p.carriedBy < 0) continue;
+      const c = this.bySeat(p.carriedBy);
+      if (c && c.conn) { p.x = c.x - c.in.fx * 0.18; p.z = c.z - c.in.fz * 0.18; p.y = 0; }
+      else p.carriedBy = -1;
+    }
+    for (let i = 0; i < order.length; i++) for (let j = i + 1; j < order.length; j++) {
+      const a = order[i], b = order[j];
+      if (!a.conn || !b.conn || a.carriedBy >= 0 || b.carriedBy >= 0 || a.air || b.air) continue;
+      let dx = b.x - a.x, dz = b.z - a.z;
+      const dd = Math.hypot(dx, dz), min = C.COOK_R * 1.8;
+      if (dd < min && dd > 0.0001) {
+        const push = (min - dd) / 2; dx /= dd; dz /= dd;
+        a.x -= dx * push; a.z -= dz * push;
+        b.x += dx * push; b.z += dz * push;
+      }
+    }
     this.tickStations(dt); this.tickFires(dt); this.tickCustomers(dt); this.tickItems(dt);
     return this.ev;
   }
@@ -399,7 +428,7 @@ export class Sim {
         if (!out) this.bounceWalls(cu, 0.3);
         if (cu.y <= 0) {
           cu.y = 0;
-          if (out) { cu.st = 'out'; this.stats.yeets++; this.push({ k: 'thud', x: cu.x, z: cu.z }); this.queueReview('r_squat'); this.spawnItem('laptop', cu.x - 0.5, 0.6, Math.min(cu.z, C.ROOM_Z + 1.5)); this.dropTicket(cu.party); this.bumpCred(C.CRED_YEET); }
+          if (out) { cu.st = 'out'; this.stats.yeets++; if (cu.thrownBy != null) this.pst(cu.thrownBy).yt++; this.push({ k: 'thud', x: cu.x, z: cu.z, s: cu.thrownBy }); this.queueReview('r_squat'); this.spawnItem('laptop', cu.x - 0.5, 0.6, Math.min(cu.z, C.ROOM_Z + 1.5)); this.dropTicket(cu.party); this.bumpCred(C.CRED_YEET); }
           else { cu.st = 'reseat'; this.push({ k: 'thud', x: cu.x, z: cu.z }); }
         }
       } else if (cu.st === 'reseat') {
@@ -485,20 +514,53 @@ export class Sim {
   // ---- player tick ----------------------------------------------------------
   tickPlayer(p, dt) {
     if (!p.conn) return;
+    if (p.carriedBy >= 0) { p.aPend = 0; p.thPend = 0; p.wob = 0; p.spray = false; return; } // cargo (glued in the post-pass)
+    if (p.air) { this.tickAirPlayer(p, dt); return; }
+    if (p.soakT > 0) p.soakT -= dt;
+    if (p.heldPl >= 0) { p.carryT -= dt; if (p.carryT <= 0) this.releaseFriend(p, false); }
+    if (p.stunT > 0) {
+      p.stunT -= dt; p.aPend = 0; p.thPend = 0; p.spray = false;
+      p.x += p.slideX * dt; p.z += p.slideZ * dt;
+      const dk = Math.max(0, 1 - 3.2 * dt);
+      p.slideX *= dk; p.slideZ *= dk;
+      this.clampPlayer(p);
+      this.collideSolids(p, C.COOK_R);
+      return;
+    }
     if (p.busyT > 0) { p.busyT -= dt; p.aPend = 0; p.thPend = 0; return; }
-    const drag = p.heldCu ? C.DRAG_MULT : 1;
-    p.vx = p.in.x * C.COOK_SPEED * drag; p.vz = p.in.z * C.COOK_SPEED * drag;
-    p.x += p.vx * dt; p.z += p.vz * dt;
-    p.x = Math.max(-C.ROOM_X + C.COOK_R, Math.min(C.ROOM_X - C.COOK_R, p.x));
-    if (this.ph === 'supply' || this.ph === 'prep') {
-      // the yard is open: pass through the door gap, roam to the riverbank
-      if (Math.abs(p.x - LAYOUT.door.x) < LAYOUT.door.gap) p.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.YARD_Z - C.COOK_R, p.z));
-      else if (p.z < C.ROOM_Z) p.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.ROOM_Z - C.COOK_R, p.z));
-      else p.z = Math.max(C.ROOM_Z + C.COOK_R, Math.min(C.YARD_Z - C.COOK_R, p.z));
-    } else if (!this.outThroughDoor(p.x, p.z)) p.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.ROOM_Z - C.COOK_R, p.z));
-    else p.z = Math.min(C.ROOM_Z + 0.6, p.z); // lean out the door, not into the void
+    let mult = 1;
+    if (p.heldPl >= 0) mult *= C.CARRY_MULT;
+    else if (p.heldCu) mult *= C.DRAG_MULT;
+    if (p.soakT > 0) mult *= C.SOAK_MULT;
+    const sprint = p.in.sp && p.heldPl < 0;
+    if (sprint) mult *= C.SPRINT_MULT;
+    const tx = p.in.x * C.COOK_SPEED * mult, tz = p.in.z * C.COOK_SPEED * mult;
+    let kk = sprint ? C.SPRINT_ACCEL : 18;
+    if (!sprint && Math.hypot(p.svx, p.svz) > C.COOK_SPEED + 0.2) kk = 3.5; // skid out of a sprint
+    const k = Math.min(1, kk * dt);
+    p.svx += (tx - p.svx) * k; p.svz += (tz - p.svz) * k;
+    p.vx = p.svx; p.vz = p.svz;
+    p.x += p.svx * dt; p.z += p.svz * dt;
+    this.clampPlayer(p);
     this.collideSolids(p, C.COOK_R);
     p.yaw = Math.atan2(p.in.fx, p.in.fz);
+    // wobble: a stack of plates hates speed, corners, and sprinting
+    const spd = Math.hypot(p.svx, p.svz);
+    if (p.stack.length > 0) {
+      let turn = (p.yaw - (p._pyaw ?? p.yaw)) % (Math.PI * 2);
+      if (turn > Math.PI) turn -= Math.PI * 2; if (turn < -Math.PI) turn += Math.PI * 2;
+      const stress = (spd / C.COOK_SPEED) * (0.35 + p.stack.length * 0.3) + Math.abs(turn) / dt * 0.055 + (sprint ? 0.55 : 0);
+      p.wob = Math.max(0, Math.min(1.25, p.wob + (stress - 0.75) * dt * 1.4));
+      if (p.wob >= C.WOB_TUMBLE) { this.tumble(p); }
+    } else p.wob = Math.max(0, p.wob - dt * 2);
+    p._pyaw = p.yaw;
+    // broken plates are a floor hazard at speed
+    if (spd > C.SLIP_SPEED) {
+      for (const it of this.items) {
+        if (it.k !== 'shard' || it.holder) continue;
+        if (d2(p.x, p.z, it.x, it.z) < 0.45 * 0.45) { this.slip(p); break; }
+      }
+    }
     if (this.ph === 'supply') {
       if (p.cast && Math.hypot(p.vx, p.vz) > 0.5) { p.cast = false; p.biteT = 0; } // walking off cancels the cast
       if (p.cast && p.biteT <= 0) { p.castT -= dt; if (p.castT <= 0) { p.biteT = C.FISH_WINDOW; this.push({ k: 'bite', i: p.seat }); } }
@@ -508,6 +570,73 @@ export class Sim {
     while (p.aPend > 0) { p.aPend--; this.doInteract(p); }
     while (p.thPend > 0) { p.thPend--; this.doThrow(p); }
     if (p.spray) this.doSpray(p, dt);
+  }
+  clampPlayer(p) {
+    p.x = Math.max(-C.ROOM_X + C.COOK_R, Math.min(C.ROOM_X - C.COOK_R, p.x));
+    if (this.ph === 'supply' || this.ph === 'prep') {
+      // the yard is open: pass through the door gap, roam to the riverbank
+      if (Math.abs(p.x - LAYOUT.door.x) < LAYOUT.door.gap) p.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.YARD_Z - C.COOK_R, p.z));
+      else if (p.z < C.ROOM_Z) p.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.ROOM_Z - C.COOK_R, p.z));
+      else p.z = Math.max(C.ROOM_Z + C.COOK_R, Math.min(C.YARD_Z - C.COOK_R, p.z));
+    } else if (!this.outThroughDoor(p.x, p.z)) p.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.ROOM_Z - C.COOK_R, p.z));
+    else p.z = Math.min(C.ROOM_Z + 0.6, p.z); // lean out the door, not into the void
+  }
+  tickAirPlayer(p, dt) {
+    const a = p.air;
+    a.vy -= C.GRAV * dt;
+    p.x += a.vx * dt; p.y += a.vy * dt; p.z += a.vz * dt;
+    if (p.x < -C.ROOM_X + 0.3) { p.x = -C.ROOM_X + 0.3; a.vx = Math.abs(a.vx) * 0.4; }
+    if (p.x > C.ROOM_X - 0.3) { p.x = C.ROOM_X - 0.3; a.vx = -Math.abs(a.vx) * 0.4; }
+    const yard = this.ph === 'supply' || this.ph === 'prep';
+    const zMax = yard ? C.YARD_Z + 1.6 : (this.outThroughDoor(p.x, p.z) ? C.ROOM_Z + 2 : C.ROOM_Z - 0.3);
+    if (p.z < -C.ROOM_Z + 0.3) { p.z = -C.ROOM_Z + 0.3; a.vz = Math.abs(a.vz) * 0.4; }
+    if (p.z > zMax) { p.z = zMax; a.vz = -Math.abs(a.vz) * 0.4; }
+    if (p.y <= 0) {
+      p.y = 0; p.air = null; p.stunT = C.STUN_LAND;
+      this.tumble(p, true);
+      this.dropAll(p);
+      const water = yard && p.z > C.YARD_Z - 0.2;
+      if (water) { p.soakT = C.SOAK_T; p.z = C.YARD_Z - 0.9; this.push({ k: 'splash', x: p.x, z: p.z, s: p.seat }); }
+      else this.push({ k: 'landf', x: p.x, z: p.z, s: p.seat });
+    }
+  }
+  releaseFriend(p, thrown) {
+    const fr = this.bySeat(p.heldPl); p.heldPl = -1;
+    if (!fr) return;
+    fr.carriedBy = -1;
+    if (thrown) {
+      fr.air = { vx: p.in.fx * C.PL_THROW_V, vz: p.in.fz * C.PL_THROW_V, vy: C.PL_THROW_UP };
+      fr.y = 1.2;
+      this.pst(p.seat).fy++;
+      this.push({ k: 'yeetf', s: p.seat, v: fr.seat, x: p.x, z: p.z });
+    } else fr.stunT = C.STUN_DROP;
+  }
+  tumble(p, hard) {
+    const rel = [];
+    if (p.held) {
+      const it = this.itemOf(p.held);
+      if (it && (hard || ['dish', 'plate', 'dirty', 'mug'].includes(it.k))) { rel.push(it); p.held = null; }
+    }
+    for (const id of p.stack) { const it = this.itemOf(id); if (it) rel.push(it); }
+    p.stack = []; p.wob = 0;
+    if (!rel.length) return;
+    for (const it of rel) {
+      it.holder = null; it.ls = p.seat;
+      const ang = this.r() * 6.283, v = 4.5 + this.r() * 3;
+      it.x = p.x; it.y = 1.1; it.z = p.z;
+      it.vx = Math.sin(ang) * v; it.vz = Math.cos(ang) * v; it.vy = 2.5 + this.r() * 2;
+    }
+    this.push({ k: 'tumble', x: p.x, z: p.z, s: p.seat, n: rel.length });
+  }
+  slip(p) {
+    if (p.stunT > 0) return;
+    p.stunT = C.STUN_SLIP;
+    p.slideX = p.svx * 1.3; p.slideZ = p.svz * 1.3;
+    p.svx = 0; p.svz = 0;
+    if (p.heldPl >= 0) this.releaseFriend(p, false);
+    this.tumble(p);
+    this.pst(p.seat).sl++;
+    this.push({ k: 'slip', x: p.x, z: p.z, s: p.seat });
   }
   collideSolids(o, r) {
     for (const s of SOLIDS) {
@@ -534,7 +663,8 @@ export class Sim {
     if (this.ph === 'lobby' && this.near(p, LAYOUT.sign, 1.9)) { this.ph = 'count'; this.cd = C.COUNT_LEN; this.push({ k: 'count' }); return; }
     if (this.ph === 'supply') { this.supplyAct(p, held); return; }
     if (this.ph !== 'shift' && this.ph !== 'close' && this.ph !== 'count') return;
-    // 2. drop the squatter
+    // 2. put down whoever you're carrying
+    if (p.heldPl >= 0) { this.releaseFriend(p, false); return; }
     if (p.heldCu) { const cu = this.cust.find(c => c.id === p.heldCu); if (cu) { cu.st = 'reseat'; cu.y = 0; } p.heldCu = null; return; }
     // 3. stations
     if (this.stationAct(p, held)) return;
@@ -564,14 +694,48 @@ export class Sim {
       // the Ranch LARPer accepts exactly one (1) yee-haw
       const lp = this.cust.find(c => c.ty === 'larper' && !c.yh && ['sit', 'wait', 'eat'].includes(c.st) && this.near(p, c));
       if (lp) { lp.yh = 1; this.bumpCred(C.LARPER_CRED); this.push({ k: 'yeehaw', x: lp.x, z: lp.z }); return; }
+      // grab a whole coworker (friendslop law: your friends are cargo)
+      if (p.heldPl < 0) {
+        const fr = [...this.players.values()]
+          .filter(q => q !== p && q.conn && q.carriedBy < 0 && q.heldPl < 0 && !q.air && d2(p.x, p.z, q.x, q.z) < 1.3 * 1.3)
+          .sort((a, b) => a.seat - b.seat)[0];
+        if (fr) {
+          fr.carriedBy = p.seat; fr.cast = false; fr.biteT = 0; fr.spray = false;
+          p.heldPl = fr.seat; p.carryT = C.CARRY_RELEASE;
+          this.push({ k: 'grabf', s: p.seat, v: fr.seat, x: p.x, z: p.z });
+          return;
+        }
+      }
     }
-    // 10. sink / bin
-    if (this.near(p, LAYOUT.sink) && held && held.k === 'dirty') { this.removeItem(held.id); p.held = null; this.st.sink.dirty++; return; }
+    // 10. sink / bin (the sink takes the whole armload of dirty plates)
+    if (this.near(p, LAYOUT.sink) && ((held && held.k === 'dirty') || p.stack.some(id => this.itemOf(id)?.k === 'dirty'))) {
+      let n = 0;
+      if (held && held.k === 'dirty') { this.removeItem(held.id); p.held = null; n++; }
+      p.stack = p.stack.filter(id => {
+        const it = this.itemOf(id);
+        if (it && it.k === 'dirty') { this.removeItem(id); n++; return false; }
+        return true;
+      });
+      if (!p.held && p.stack.length) p.held = p.stack.shift();
+      if (n) { this.st.sink.dirty += n; return; }
+    }
     if (this.near(p, LAYOUT.bin) && held && ['burnt', 'raw', 'dirty', 'dish', 'mug'].includes(held.k)) { this.removeItem(held.id); p.held = null; this.push({ k: 'trash' }); return; }
-    // 11. counter pass put-down / pickup, floor pickup
+    // 11. stack another plate on the armload (risk it), counter put-down, pickup, sweep
+    const STACKABLE = ['dish', 'plate', 'dirty'];
+    if (held && STACKABLE.includes(held.k) && p.stack.length < C.STACK_MAX) {
+      let best = null, bd = C.REACH * C.REACH;
+      for (const it of this.items) {
+        if (it.holder || !STACKABLE.includes(it.k)) continue;
+        const dd = d2(p.x, p.z, it.x, it.z);
+        if (dd < bd) { bd = dd; best = it; }
+      }
+      if (best) { best.holder = p.pid; best.vx = best.vy = best.vz = 0; p.stack.push(best.id); this.push({ k: 'stackup', x: p.x, z: p.z, n: p.stack.length + 1 }); return; }
+    }
     if (held) {
       for (const ps of LAYOUT.pass) if (this.near(p, ps, 1.3) && !this.items.some(i => !i.holder && i.y > 0.5 && d2(i.x, i.z, ps.x, ps.z) < 0.16)) {
-        held.holder = null; held.x = ps.x; held.y = 0.95; held.z = ps.z; held.vx = held.vy = held.vz = 0; p.held = null; return;
+        held.holder = null; held.x = ps.x; held.y = 0.95; held.z = ps.z; held.vx = held.vy = held.vz = 0;
+        p.held = p.stack.length ? p.stack.shift() : null;
+        return;
       }
       // return extinguisher
       if (held.k === 'ext' && this.near(p, LAYOUT.extHook)) { this.removeItem(held.id); p.held = null; this.extOut = false; return; }
@@ -583,16 +747,26 @@ export class Sim {
         if (dd < bd) { bd = dd; best = it; }
       }
       if (best) { best.holder = p.pid; p.held = best.id; best.vx = best.vy = best.vz = 0; return; }
+      // nothing to grab: sweep up the shards before someone eats it
+      let sh = null, sd = C.REACH * C.REACH;
+      for (const it of this.items) {
+        if (it.k !== 'shard' || it.holder) continue;
+        const dd = d2(p.x, p.z, it.x, it.z);
+        if (dd < sd) { sd = dd; sh = it; }
+      }
+      if (sh) { this.removeItem(sh.id); p.busyT = 0.25; this.push({ k: 'sweep', x: sh.x, z: sh.z }); return; }
     }
   }
   // ---- the supply run ---------------------------------------------------------
   supplyAct(p, held) {
+    if (p.heldPl >= 0) { this.releaseFriend(p, false); return; }
     for (const fs of LAYOUT.fishSpots) {
       if (!this.near(p, fs, 1.9)) continue;
       if (p.biteT > 0) {
         p.biteT = 0; p.cast = false;
         const f = this.spawnItem('fish', p.x, 1, p.z); f.holder = p.pid; p.held = f.id;
-        this.push({ k: 'catch', x: p.x, z: p.z });
+        this.pst(p.seat).ca++;
+        this.push({ k: 'catch', x: p.x, z: p.z, s: p.seat });
         return;
       }
       if (!p.cast && !held) { p.cast = true; p.castT = C.FISH_MIN + this.r() * (C.FISH_MAX - C.FISH_MIN); this.push({ k: 'cast', x: p.x, z: p.z }); return; }
@@ -610,7 +784,7 @@ export class Sim {
     }
     if (this.near(p, LAYOUT.truck, 2.6) && held && (held.k === 'fish' || held.k === 'huck')) {
       const key = held.k === 'fish' ? 'trout' : 'huck';
-      if (this.stock[key] < this.stockCap()) { this.stock[key]++; this.push({ k: 'bank', s: key, x: p.x, z: p.z }); }
+      if (this.stock[key] < this.stockCap()) { this.stock[key]++; this.pst(p.seat).bk++; this.push({ k: 'bank', s: key, x: p.x, z: p.z }); }
       this.removeItem(held.id); p.held = null;
       return;
     }
@@ -627,7 +801,16 @@ export class Sim {
     if (!held) {
       let best = null, bd = C.REACH * C.REACH;
       for (const it of this.items) { if (it.holder || it.k === 'shard') continue; const dd = d2(p.x, p.z, it.x, it.z); if (dd < bd) { bd = dd; best = it; } }
-      if (best) { best.holder = p.pid; p.held = best.id; best.vx = best.vy = best.vz = 0; }
+      if (best) { best.holder = p.pid; p.held = best.id; best.vx = best.vy = best.vz = 0; return; }
+      // grab a coworker — the river is RIGHT THERE
+      const fr = [...this.players.values()]
+        .filter(q => q !== p && q.conn && q.carriedBy < 0 && q.heldPl < 0 && !q.air && d2(p.x, p.z, q.x, q.z) < 1.3 * 1.3)
+        .sort((a2, b2) => a2.seat - b2.seat)[0];
+      if (fr) {
+        fr.carriedBy = p.seat; fr.cast = false; fr.biteT = 0; fr.spray = false;
+        p.heldPl = fr.seat; p.carryT = C.CARRY_RELEASE;
+        this.push({ k: 'grabf', s: p.seat, v: fr.seat, x: p.x, z: p.z });
+      }
     }
   }
   spawnBear() {
@@ -679,7 +862,7 @@ export class Sim {
         if (!slot && held && held.k === 'raw' && ING_STATION[held.ing] === stName) {
           const prem = held.ing === 'trout' && this.stock.trout > 0;
           if (prem) this.stock.trout--;
-          slots[i] = { ing: held.ing, cookT: 0, flipped: false, st: 'cook', prem };
+          slots[i] = { ing: held.ing, cookT: 0, flipped: false, st: 'cook', prem, by: p.seat };
           this.removeItem(held.id); p.held = null; this.push({ k: 'sizzleon', x: sp.x, z: sp.z }); return true;
         }
         if (slot) {
@@ -704,16 +887,16 @@ export class Sim {
     return tryStation('griddle', LAYOUT.griddle) || tryStation('pan', LAYOUT.pan);
   }
   tableAct(p, held) {
-    // serve/bus tables
+    if (!held && !p.stack.length) return false;
     for (let ti = 0; ti < LAYOUT.tables.length; ti++) {
       const t = LAYOUT.tables[ti];
       if (d2(p.x, p.z, t.x, t.z) > 2.4 * 2.4) continue;
-      if (held && this.serveTicket(p, held, tk => tk.table === ti)) return true;
+      if (this.serveTicket(p, tk => tk.table === ti)) return true;
     }
     for (let si = 0; si < LAYOUT.stools.length; si++) {
       const s = LAYOUT.stools[si];
       if (d2(p.x, p.z, s.x, s.z) > C.REACH * C.REACH) continue;
-      if (held && this.serveTicket(p, held, tk => tk.stool === si)) return true;
+      if (this.serveTicket(p, tk => tk.stool === si)) return true;
     }
     return false;
   }
@@ -722,13 +905,21 @@ export class Sim {
     this._contagionNext = true;
     this.push({ k: 'seqpost' });
   }
-  serveTicket(p, held, match) {
-    const kind = held.k === 'dish' ? held.dish : held.k === 'mug' ? held.fill : null;
-    if (!kind) return false;
+  serveTicket(p, match) {
+    const kindOf = it => it.k === 'dish' ? it.dish : it.k === 'mug' ? it.fill : null;
+    const cands = [];
+    if (p.held) { const it = this.itemOf(p.held); if (it) cands.push({ it, src: 'h' }); }
+    p.stack.forEach((id, ix) => { const it = this.itemOf(id); if (it) cands.push({ it, src: ix }); });
+    if (!cands.some(c => kindOf(c.it))) return false;
     for (const tk of this.tickets) {
       if (!match(tk)) continue;
-      const ln = tk.ln.find(l => !l.ok && l.d === kind);
-      if (!ln) {
+      let hit = null, ln = null;
+      for (const c of cands) {
+        const kind = kindOf(c.it); if (!kind) continue;
+        const l = tk.ln.find(l2 => !l2.ok && l2.d === kind);
+        if (l) { hit = c; ln = l; break; }
+      }
+      if (!hit) {
         // Kale refuses wrong answers to the riddle — the dish stays in your hands
         if (tk.kale) {
           tk.tries++; tk.pat -= C.KALE_PENALTY;
@@ -739,6 +930,7 @@ export class Sim {
         continue;
       }
       ln.ok = true;
+      const held = hit.it, kind = kindOf(held);
       let pay = C.PAY[kind];
       const sp = this.special && SPECIALS[this.special];
       if (sp) {
@@ -750,8 +942,10 @@ export class Sim {
       if ((kind === 'coffee' || kind === 'matcha') && this.up('espresso')) pay += 5;
       if (tk.kale) pay *= C.KALE_MULT;
       if (held.sad) pay = Math.round(pay / 2);
-      this.rentE += pay; this.stats.served++;
-      this.removeItem(held.id); p.held = null;
+      this.rentE += pay; this.stats.served++; this.pst(p.seat).sv++;
+      this.removeItem(held.id);
+      if (hit.src === 'h') p.held = p.stack.length ? p.stack.shift() : null;
+      else p.stack.splice(hit.src, 1);
       this.push({ k: 'cha', a: pay, x: p.x, z: p.z });
       if (held.sad) this.queueReview('r_sad');
       if (tk.ln.every(l => l.ok)) this.completeTicket(tk);
@@ -784,19 +978,22 @@ export class Sim {
     if (dale) { /* Dale just drinks at the stool */ }
   }
   doThrow(p) {
+    if (p.heldPl >= 0) { this.releaseFriend(p, true); return; }
     if (p.heldCu) {
       const cu = this.cust.find(c => c.id === p.heldCu); p.heldCu = null;
       if (cu) {
-        cu.st = 'air'; cu.y = 1.1;
+        cu.st = 'air'; cu.y = 1.1; cu.thrownBy = p.seat;
         cu.vx = p.in.fx * C.THROW_V; cu.vz = p.in.fz * C.THROW_V; cu.vy = C.THROW_UP;
         this.push({ k: 'yeet', x: p.x, z: p.z });
       }
       return;
     }
     if (p.held) {
-      const it = this.itemOf(p.held); p.held = null;
+      const it = this.itemOf(p.held);
+      p.held = p.stack.length ? p.stack.shift() : null;
       if (it) {
-        it.holder = null; it.x = p.x + p.in.fx * 0.5; it.y = 1.2; it.z = p.z + p.in.fz * 0.5;
+        it.holder = null; it.ls = p.seat;
+        it.x = p.x + p.in.fx * 0.5; it.y = 1.2; it.z = p.z + p.in.fz * 0.5;
         it.vx = p.in.fx * C.THROW_V; it.vz = p.in.fz * C.THROW_V; it.vy = C.THROW_UP * 0.7;
         this.push({ k: 'yeet', x: p.x, z: p.z });
       }
@@ -816,7 +1013,10 @@ export class Sim {
     this.fires = this.fires.filter(f => f.hp > 0);
   }
   dropAll(p) {
-    if (p.held) { const it = this.itemOf(p.held); if (it) { it.holder = null; it.y = Math.max(it.y, 0.6); } p.held = null; }
+    if (p.held) { const it = this.itemOf(p.held); if (it) { it.holder = null; it.ls = p.seat; it.y = Math.max(it.y, 0.6); } p.held = null; }
+    for (const id of p.stack) { const it = this.itemOf(id); if (it) { it.holder = null; it.ls = p.seat; it.y = Math.max(it.y, 0.6); } }
+    p.stack = []; p.wob = 0;
+    if (p.heldPl >= 0) this.releaseFriend(p, false);
     if (p.heldCu) { const cu = this.cust.find(c => c.id === p.heldCu); if (cu) cu.st = 'reseat'; p.heldCu = null; }
     p.cast = false; p.biteT = 0;
   }
@@ -838,7 +1038,9 @@ export class Sim {
           s.st = 'burnt';
           if (this.fires.length < C.FIRE_CAP) {
             this.fires.push({ x: cfg.slots[i].x, z: cfg.slots[i].z, hp: 1, spreadT: C.FIRE_SPREAD });
-            this.stats.fires++; this.push({ k: 'ignite', x: cfg.slots[i].x, z: cfg.slots[i].z }); this.queueReview('r_fire');
+            this.stats.fires++;
+            if (s.by != null) this.pst(s.by).fi++;
+            this.push({ k: 'ignite', x: cfg.slots[i].x, z: cfg.slots[i].z, s: s.by }); this.queueReview('r_fire');
             // Sequoia never misses content
             if (this.cust.some(c => c.ty === 'sequoia' && ['wait', 'eat', 'sit'].includes(c.st))) { this.bumpGent(C.SEQ_GENT_CLIP); this.queueReview('r_seq_fire'); this.push({ k: 'seqclip' }); }
           }
@@ -882,7 +1084,8 @@ export class Sim {
             it.y = 0;
             const sp = Math.hypot(it.vx, it.vy, it.vz);
             if ((it.k === 'plate' || it.k === 'dish' || it.k === 'mug' || it.k === 'dirty') && sp > C.BREAK_V) {
-              this.push({ k: 'break', x: it.x, z: it.z }); this.stats.broken++;
+              if (it.ls != null) this.pst(it.ls).br++;
+              this.push({ k: 'break', x: it.x, z: it.z, s: it.ls }); this.stats.broken++;
               it.k = 'shard'; it.ttl = C.SHARD_TTL; it.vx = it.vz = it.vy = 0;
               this.queueReview('r_break');
             } else { it.vy = sp > 2 ? -it.vy * 0.3 : 0; if (it.vy < 0.4) it.vy = 0; it.vx *= 0.5; it.vz *= 0.5; }
@@ -910,6 +1113,7 @@ export class Sim {
         win: made && this.day >= C.SEASON_SHIFTS, reviews: this.reviews.slice(0, 3),
         served: this.stats.served, broken: this.stats.broken, fires: this.stats.fires,
         yeets: this.stats.yeets, lost: this.stats.lost, cred: Math.round(this.cred), gent: Math.round(this.gent),
+        crew: Object.entries(this.pstats || {}).map(([seat, s]) => Object.assign({ seat: +seat }, s)),
       });
       this.push({ k: 'over', made });
     } else {
@@ -962,7 +1166,11 @@ export class Sim {
     this._larpDone = 0; this._kaleDone = 0; this._seqDone = 0;
     if (this._contagionNext) { this.flockQ = C.CONTAGION_FLOCKS; this._contagionNext = false; this.push({ k: 'contagion' }); }
     this.reviews = []; this.rentE = this.carry;
-    for (const p of this.players.values()) { p.held = null; p.heldCu = null; p.busyT = 0; p.spray = false; }
+    for (const p of this.players.values()) {
+      p.held = null; p.heldCu = null; p.busyT = 0; p.spray = false;
+      p.stack = []; p.wob = 0; p.stunT = 0; p.carriedBy = -1; p.heldPl = -1; p.air = null; p.y = 0; p.soakT = 0;
+      p.slideX = 0; p.slideZ = 0; p.svx = 0; p.svz = 0;
+    }
   }
 
   // ---- snapshot ---------------------------------------------------------------
@@ -976,8 +1184,10 @@ export class Sim {
       be: this.bear ? { x: R2(this.bear.x), z: R2(this.bear.z), st: this.bear.st, yw: R2(this.bear.yaw) } : 0,
       rent: { e: Math.round(this.rentE), tg: this.rentTg },
       pl: [...this.players.values()].filter(p => p.conn || p.graceT > 0).map(p => ({
-        i: p.seat, n: p.name, c: p.color, x: R2(p.x), z: R2(p.z),
+        i: p.seat, n: p.name, c: p.color, x: R2(p.x), y: R2(p.y || 0), z: R2(p.z),
         fx: R2(p.in.fx), fz: R2(p.in.fz), h: p.held ? this.itemMini(p.held) : null,
+        xs: p.stack.map(id => this.itemMini(id)).filter(Boolean),
+        wb: R2(p.wob), sn: p.stunT > 0 ? 1 : 0, cb: p.carriedBy, ar: p.air ? 1 : 0, so: p.soakT > 0 ? 1 : 0,
         dc: p.heldCu ? 1 : 0, b: p.busyT > 0 ? 1 : 0, sp: p.spray ? 1 : 0, off: p.conn ? 0 : 1,
         mv: Math.hypot(p.in.x, p.in.z) > 0.1 ? 1 : 0, fs: p.biteT > 0 ? 2 : (p.cast ? 1 : 0),
       })),

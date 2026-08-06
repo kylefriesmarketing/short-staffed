@@ -5,7 +5,7 @@ export class Net {
   constructor(h) {
     this.h = h; this.ws = null; this.room = null; this.profile = null;
     this.open = false; this.backoff = 1000; this.rtt = 0; this.lastSnapAt = 0;
-    this.input = { x: 0, z: 0, fx: 0, fz: -1, a: 0, th: 0, ah: false };
+    this.input = { x: 0, z: 0, fx: 0, fz: -1, a: 0, th: 0, ah: false, sp: false };
     this._lastSent = ''; this._stop = false;
     setInterval(() => this.pump(), 50);
     setInterval(() => { if (this.open) this.send({ t: 'ping', n: Date.now() % 1e9 }); }, 2000);
@@ -36,6 +36,7 @@ export class Net {
       if (m.t === 'hello') { this.h.hello(m); }
       else if (m.t === 's') { this.lastSnapAt = performance.now(); this.h.snap(m.snap); }
       else if (m.t === 'ev') { for (const ev of m.l) this.h.ev(ev); }
+      else if (m.t === 'rtc') { this.h.rtc && this.h.rtc(m); }
       else if (m.t === 'pong') { this.rtt = (Date.now() % 1e9) - m.n; }
     };
     ws.onclose = () => {
@@ -50,11 +51,11 @@ export class Net {
   pump() {
     if (!this.open) return;
     const i = this.input;
-    const s = [i.x.toFixed(2), i.z.toFixed(2), i.fx.toFixed(2), i.fz.toFixed(2), i.a, i.th, i.ah ? 1 : 0].join(',');
+    const s = [i.x.toFixed(2), i.z.toFixed(2), i.fx.toFixed(2), i.fz.toFixed(2), i.a, i.th, i.ah ? 1 : 0, i.sp ? 1 : 0].join(',');
     const now = performance.now();
     if (s !== this._lastSent || now - (this._lastForce || 0) > 250) {
       this._lastSent = s; this._lastForce = now;
-      this.send({ t: 'in', x: i.x, z: i.z, fx: i.fx, fz: i.fz, a: i.a, th: i.th, ah: i.ah });
+      this.send({ t: 'in', x: i.x, z: i.z, fx: i.fx, fz: i.fz, a: i.a, th: i.th, ah: i.ah, sp: i.sp });
     }
   }
   send(o) { if (this.open) { try { this.ws.send(JSON.stringify(o)); } catch {} } }

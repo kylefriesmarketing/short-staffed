@@ -109,6 +109,17 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   #p-auto { font-size: 11px; opacity: .6; margin-top: 5px; text-align: right; }
   #bite { position: fixed; left: 50%; bottom: 22vh; transform: translateX(-50%); font-size: 76px; display: none; z-index: 36; pointer-events: none; animation: bitepulse .18s infinite alternate; text-shadow: 0 4px 18px rgba(0,0,0,.5); }
   @keyframes bitepulse { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.25); } }
+  #mic.live { background: rgba(92,158,79,.95); animation: micpulse 1.6s infinite; }
+  @keyframes micpulse { 50% { box-shadow: 0 0 0 5px rgba(92,158,79,.25); } }
+  #h-card { background: var(--cream); border: 4px solid var(--woodd); border-radius: 16px; padding: 20px 26px; max-width: 460px; text-align: center; box-shadow: 0 14px 44px rgba(0,0,0,.55); }
+  #h-title { font-weight: 900; letter-spacing: .1em; font-size: 15px; margin-bottom: 10px; }
+  #h-lines div { font-size: 14.5px; padding: 4px 0; border-bottom: 1px dashed rgba(0,0,0,.12); }
+  #h-lines div:last-child { border: 0; color: #a33d2a; font-weight: 700; }
+  #e-blame { margin-top: 12px; }
+  #e-blame .brow { display: flex; align-items: baseline; gap: 8px; background: var(--white); border-radius: 8px; padding: 7px 10px; margin-bottom: 5px; font-size: 13px; }
+  #e-blame .brow span { font-weight: 900; letter-spacing: .04em; }
+  #e-blame .brow b { font-size: 15px; }
+  #e-blame .brow i { opacity: .6; font-size: 11.5px; margin-left: auto; font-style: normal; }
 </style>
 </head>
 <body>
@@ -121,6 +132,7 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   <div class="chip meter" id="cred"></div>
   <div class="chip meter" id="gent"></div>
   <div class="chip" id="stock" style="display:none"></div>
+  <div class="chip" id="mic" style="display:none;pointer-events:auto;cursor:pointer"></div>
 </div>
 <div id="firevig"></div>
 <div id="bite">❗</div>
@@ -151,6 +163,7 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
     <div id="e-title"></div>
     <div id="e-sub"></div>
     <div id="e-rows"></div>
+    <div id="e-blame"></div>
     <div id="e-yowl"></div>
     <button id="again"></button>
   </div>
@@ -166,6 +179,9 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
     <div id="p-countwrap"><i id="p-count"></i></div>
     <div id="p-auto"></div>
   </div>
+</div>
+<div class="overlay" id="howto" style="display:none">
+  <div id="h-card"><div id="h-title"></div><div id="h-lines"></div></div>
 </div>
 <div id="stick"><div id="nub"></div></div>
 <div class="tbtn" id="btnA">A</div>

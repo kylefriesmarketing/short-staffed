@@ -5,6 +5,7 @@ let listX = 0, listZ = 0;
 let sizzleG = null, murmurG = null, murmurN = null, sizzleN = null, fireG = null, fireN = null;
 let banjoTimer = null;
 
+export function getAC() { return ac; }
 export function audioInit() {
   if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
   ac = new (window.AudioContext || window.webkitAudioContext)();
@@ -176,6 +177,14 @@ export function sfx(k, x, z) {
     case 'sysco_out': [392, 349, 293].forEach((f, i) => setTimeout(() => tone(f, f * 0.97, 0.32, 'sawtooth', 0.09), i * 260)); break;
     case 'sysco_broke': tone(220, 200, 0.2, 'square', 0.08); break;
     case 'bought': tone(160, 100, 0.12, 'sine', 0.14); setTimeout(() => { tone(1046, 1046, 0.12, 'triangle', 0.12); tone(1568, 1568, 0.18, 'triangle', 0.1); }, 120); break;
+    case 'grabf': tone(220, 330, 0.14, 'square', 0.12, x, z); break;
+    case 'yeetf': noise(0.45, 0.2, 400, 2600, x, z); tone(500, 900, 0.3, 'square', 0.1, x, z); break;
+    case 'landf': tone(110, 45, 0.3, 'sine', 0.3, x, z, 'exp'); noise(0.18, 0.18, 80, 500, x, z); setTimeout(() => tone(180, 140, 0.25, 'sawtooth', 0.07, x, z), 200); break;
+    case 'splash': noise(0.7, 0.32, 300, 2400, x, z); tone(300, 90, 0.5, 'sine', 0.12, x, z, 'exp'); break;
+    case 'slip': tone(900, 200, 0.35, 'sine', 0.14, x, z, 'exp'); setTimeout(() => noise(0.2, 0.2, 200, 1200, x, z), 250); break;
+    case 'tumble': for (let i = 0; i < 4; i++) setTimeout(() => noise(0.12, 0.16, 1400 + i * 400, 4000, x, z), i * 90); break;
+    case 'stackup': tone(1200, 1400, 0.07, 'triangle', 0.1, x, z); break;
+    case 'sweep': noise(0.3, 0.1, 800, 2200, x, z); break;
     case 'bellding': tone(2093, 2093, 0.4, 'sine', 0.2, x, z); tone(2637, 2637, 0.25, 'sine', 0.1, x, z); break;
     case 'kalewrong': tone(392, 340, 0.35, 'sine', 0.1, x, z); setTimeout(() => tone(330, 290, 0.4, 'sine', 0.09, x, z), 300); break;
     case 'kaleok': [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, f, 0.16, 'triangle', 0.12, x, z), i * 90)); break;
