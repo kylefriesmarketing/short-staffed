@@ -184,7 +184,7 @@ class Merger {
       mat.bumpScale = opt.bump ?? 0.06;
     }
     if (opt.e) { mat.emissive = new THREE.Color(0xffffff); mat.emissiveIntensity = opt.e; mat.vertexColors = true; }
-    const mesh = new THREE.Mesh(g, mat);
+    const mesh = new THREE.Mesh(g, opt.mat || mat);
     mesh.castShadow = !!opt.cast; mesh.receiveShadow = opt.recv !== false;
     return mesh;
   }
@@ -225,7 +225,7 @@ function nameSprite(name) {
   cx.fillStyle = '#fff6e8'; cx.fillText(name, 128, 34);
   const tx = new THREE.CanvasTexture(cv);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, transparent: true, depthWrite: false }));
-  sp.scale.set(1.7, 0.42, 1); sp.position.y = 1.78; sp.renderOrder = 4;
+  sp.scale.set(1.7, 0.42, 1); sp.position.y = 2.2; sp.renderOrder = 4;
   return sp;
 }
 
@@ -778,7 +778,7 @@ export class World {
   emote(ch, x, z) {
     const e = this.emotes.find(q => !q.m.visible) || this.emotes[0];
     e.m.material.map = emojiTexture(ch); e.m.material.opacity = 1; e.m.material.needsUpdate = true;
-    e.m.position.set(x, 1.95, z); e.m.visible = true; e.t = 1.7;
+    e.m.position.set(x, 2.25, z); e.m.visible = true; e.t = 1.7;
   }
   moneyPop(txt, x, z) {
     const e = this.moneys.find(q => !q.m.visible) || this.moneys[0];
@@ -797,87 +797,54 @@ export class World {
 
   // ---- characters --------------------------------------------------------------
   buildCook(color, name) {
-    const g = new THREE.Group();
+    const g = human({
+      shirt: PAL.white, sleeve: PAL.white, pants: 0x4a5a6a, shoe: 0x3a2f28,
+      skin: PAL.skin[color % 4], apron: PAL.aprons[color % 4], hat: 'paper',
+      hair: [0x4a3a2c, 0x7a5a3a, 0x2c2620, 0xb08a4a][color % 4],
+      brow: 0x5a4030, mouth: 0.13, badge: true,
+    });
     if (name) g.add(nameSprite(name));
-    const m = new Merger();
-    m.add(GEO.caps, PAL.white, 0, 0.52, 0, 0.62, 0.62, 0.62);                 // body whites
-    m.add(GEO.box, PAL.aprons[color % 4], 0, 0.46, 0.18, 0.5, 0.55, 0.22);    // apron
-    m.add(GEO.box, PAL.aprons[color % 4], 0, 0.86, 0.13, 0.2, 0.3, 0.1);      // bib
-    const body = m.build(); g.add(body);
-    const head = new THREE.Group();
-    head.add(mesh(GEO.sph, M(PAL.skin[color % 4]), 0, 0, 0, 0.62, 0.56, 0.6));
-    head.add(mesh(GEO.cyl, M(PAL.white), 0, 0.22, 0, 0.5, 0.22, 0.5));
-    head.add(mesh(GEO.box, M(PAL.white), 0, 0.16, 0.24, 0.46, 0.1, 0.2));
-    face(head, { z: 0.27, w: 0.09, mouth: 0.14, brow: 0x5a4030 });
-    head.position.y = 1.06; g.add(head);
-    const armL = this.arm(PAL.white), armR = this.arm(PAL.white);
-    armL.position.set(-0.36, 0.82, 0); armR.position.set(0.36, 0.82, 0);
-    g.add(armL, armR);
-    const legL = new THREE.Group(), legR = new THREE.Group();
-    legL.add(mesh(GEO.box, M(0x4a5a6a), 0, -0.14, 0, 0.15, 0.3, 0.16));
-    legR.add(mesh(GEO.box, M(0x4a5a6a), 0, -0.14, 0, 0.15, 0.3, 0.16));
-    legL.position.set(-0.15, 0.3, 0); legR.position.set(0.15, 0.3, 0);
-    g.add(legL, legR);
-    const carry = new THREE.Group(); carry.position.set(0, 0.78, 0.5); g.add(carry);
-    g.add(blob(0.42));
-    g.userData = { head, armL, armR, legL, legR, carry, ph: Math.random() * 6.28 };
     return castAll(g);
   }
-  arm(color) { const a = new THREE.Group(); a.add(mesh(GEO.box, M(color), 0, -0.16, 0, 0.13, 0.34, 0.13)); return a; }
   buildCustomer(ty, id) {
-    const g = new THREE.Group();
-    let bodyC = PAL.gray, skin = PAL.skin[id % 4], headExtra = null, scale = 1;
-    if (ty === 'flock') bodyC = PAL.flock[id % 3];
-    if (ty === 'zillow') bodyC = PAL.zillow[id % 2];
-    if (ty === 'dale') { bodyC = PAL.denim; }
-    if (ty === 'camper') bodyC = id % 2 ? PAL.flannel : 0x4f7a4a;
-    if (ty === 'squatter') { bodyC = PAL.gray; scale = 1.08; }
-    if (ty === 'kale') bodyC = 0x9caf88;
-    if (ty === 'sequoia') bodyC = 0xc47a5a;
-    if (ty === 'larper') bodyC = 0x7a4a8a;
-    const m = new Merger();
-    m.add(GEO.caps, bodyC, 0, 0.5, 0, 0.6 * scale, 0.6 * scale, 0.6 * scale);
-    const body = m.build(); g.add(body);
-    const head = new THREE.Group();
-    head.add(mesh(GEO.sph, M(skin), 0, 0, 0, 0.56, 0.52, 0.54));
-    if (ty !== 'flock' && ty !== 'squatter') face(head, { z: 0.24, w: 0.085, mouth: ty === 'dale' ? 0 : 0.12, brow: ty === 'kale' ? 0x4a3a2c : 0x5a4030 });
-    if (ty === 'flock') {
-      head.add(mesh(GEO.box, M(0x3a3f4a, { r: 0.25, m: 0.3 }), 0, 0.02, 0.26, 0.34, 0.09, 0.06)); // shades hug the face
-      head.add(mesh(GEO.sph, M(0xe8d29a), 0, 0.24, 0, 0.5, 0.28, 0.46));
+    const skin = PAL.skin[id % 4];
+    const HAIR = [0x4a3a2c, 0x2c2620, 0xb08a4a, 0x7a5a3a, 0x8a4a3a];
+    const hair = HAIR[id % HAIR.length];
+    // one silhouette per archetype — you should know who just walked in from
+    // across the room, before you can read a single ticket
+    const K = {
+      flock: { shirt: PAL.flock[id % 3], pants: 0x2c3038, shoe: PAL.white, hair, pony: true, glasses: 0x3a3f4a, mouth: 0.1 },
+      camper: { shirt: id % 2 ? PAL.flannel : 0x4f7a4a, pants: 0x8a7a5a, shoe: 0x5a4030, hair, hat: 'cap', hatC: id % 2 ? 0xc44536 : 0x3a5a8a, brow: 0x5a4030 },
+      squatter: { shirt: PAL.gray, pants: 0x3a3f4a, shoe: PAL.white, hair, hoodie: PAL.gray, mouth: 0.09, scale: 1.06 },
+      zillow: { shirt: PAL.zillow[id % 2], pants: 0xc4b48a, shoe: 0x6b4f33, hair, brow: 0x5a4030, mouth: 0.11 },
+      dale: { shirt: PAL.denim, pants: PAL.denim, shoe: 0x5a3a24, hair: 0x9a9a92, hat: 'cowboy', hatC: PAL.hatBrown, beard: 0xd8d2c8, mouth: 0 },
+      kale: { shirt: 0x9caf88, pants: 0x6a6a62, shoe: 0xd8d2c8, hair: 0x4a3a2c, bun: true, glasses: 0xc9a227, brow: 0x4a3a2c, mouth: 0.1 },
+      sequoia: { shirt: 0xc47a5a, pants: 0x2c3038, shoe: PAL.white, hair, pony: true, vest: 0xf2ece2, hat: 'band', hatC: 0xe8e2d6, mouth: 0.11 },
+      larper: { shirt: 0x7a4a8a, pants: PAL.denim, shoe: 0x5a3a24, hair, hat: 'cowboy', hatC: 0xd8bc8a, brow: 0x5a4030, mouth: 0.12 },
+    }[ty] || { shirt: PAL.gray, pants: 0x4a5a6a, shoe: 0x3a2f28, hair, brow: 0x5a4030 };
+    const g = human(Object.assign({ skin }, K));
+    const u = g.userData;
+    u.ty = ty;
+    u.hat = K.hat === 'cowboy' ? u.head.children[1] : null;   // the yee-haw tips it
+    if (ty === 'larper') u.head.add(mesh(GEO.box, M(PAL.white), 0.52, 0.14, 0.22, 0.13, 0.17, 0.02)); // $200 tag still on
+    if (ty === 'squatter') {                                   // laptop he will not close
+      const lap = mesh(GEO.box, M(0xd0d4d8, { r: 0.4, m: 0.3 }), 0, 1.06, 0.42, 0.46, 0.05, 0.32);
+      const scr = mesh(GEO.box, M(0x9fd8ff, { e: 0.9 }), 0, 1.2, 0.54, 0.46, 0.28, 0.03);
+      scr.rotation.x = -0.5; g.add(lap, scr);
     }
-    if (ty === 'squatter') { head.add(mesh(GEO.box, M(PAL.gray), 0, 0.14, -0.05, 0.6, 0.4, 0.55)); head.add(mesh(GEO.box, M(PAL.white), -0.24, -0.02, 0.14, 0.06, 0.12, 0.06)); head.add(mesh(GEO.box, M(PAL.white), 0.24, -0.02, 0.14, 0.06, 0.12, 0.06)); }
-    if (ty === 'dale') { head.add(mesh(GEO.cyl, M(PAL.hatBrown), 0, 0.26, 0, 0.44, 0.24, 0.44)); head.add(mesh(GEO.cyl, M(PAL.hatBrown), 0, 0.16, 0, 0.78, 0.05, 0.78)); head.add(mesh(GEO.box, M(0xd8d2c8), 0, -0.08, 0.24, 0.3, 0.1, 0.08)); }
-    if (ty === 'zillow' && id % 2 === 0) headExtra = 'point';
-    if (ty === 'camper') head.add(mesh(GEO.cyl, M(0xc44536), 0, 0.24, 0, 0.5, 0.22, 0.5));
-    if (ty === 'kale') { head.add(mesh(GEO.sph, M(0x4a3a2c), 0, 0.28, -0.12, 0.24, 0.2, 0.24)); head.add(mesh(GEO.cyl, M(0xc9a227), -0.13, 0.02, 0.24, 0.11, 0.02, 0.11, Math.PI / 2, 0, 0)); head.add(mesh(GEO.cyl, M(0xc9a227), 0.13, 0.02, 0.24, 0.11, 0.02, 0.11, Math.PI / 2, 0, 0)); }
-    let hat = null;
-    if (ty === 'larper') {
-      hat = new THREE.Group();
-      hat.add(mesh(GEO.cyl, M(0xd8bc8a), 0, 0.1, 0, 0.95, 0.06, 0.95));
-      hat.add(mesh(GEO.cyl, M(0xd8bc8a), 0, 0.26, 0, 0.5, 0.3, 0.5));
-      hat.add(mesh(GEO.box, M(PAL.white), 0.5, 0.02, 0.2, 0.12, 0.16, 0.02)); // the $200 price tag
-      hat.position.y = 0.2; head.add(hat);
-      head.add(mesh(GEO.box, M(0xc44536), 0, -0.24, 0.1, 0.4, 0.14, 0.3)); // bandana
+    if (ty === 'flock') {                                      // phone up, always
+      u.armR.rotation.x = -1.9;
+      const ph = mesh(GEO.box, M(0x4a5060, { r: 0.3, m: 0.4 }), 0, -0.5, 0.16, 0.11, 0.2, 0.04);
+      const sc = mesh(GEO.box, M(0xbfe8ff, { e: 0.9 }), 0, -0.5, 0.19, 0.09, 0.17, 0.01);
+      u.armR.add(ph, sc);
     }
-    head.position.y = 1.0; g.add(head);
-    const armL = this.arm(bodyC), armR = this.arm(bodyC);
-    armL.position.set(-0.34, 0.78, 0); armR.position.set(0.34, 0.78, 0);
-    if (headExtra === 'point') armR.rotation.x = -1.35;
-    if (ty === 'squatter') { const lap = mesh(GEO.box, M(0xd0d4d8, { r: 0.4, m: 0.3 }), 0, 0.62, 0.34, 0.42, 0.05, 0.3); const scr = mesh(GEO.box, M(0x9fd8ff, { e: 0.9 }), 0, 0.75, 0.46, 0.42, 0.26, 0.03); scr.rotation.x = -0.5; g.add(lap, scr); }
-    if (ty === 'flock') {
-      const ph = mesh(GEO.box, M(0x4a5060, { r: 0.3, m: 0.4 }), 0.4, 0.85, 0.2, 0.09, 0.2, 0.04);
-      const sc = mesh(GEO.box, M(0xbfe8ff, { e: 0.8 }), 0.4, 0.85, 0.23, 0.075, 0.17, 0.01);
-      ph.rotation.z = -0.3; sc.rotation.z = -0.3; g.add(ph, sc);
+    if (ty === 'sequoia') {                                    // filming your flat-top
+      u.armR.rotation.x = -2.5;
+      const cam = mesh(GEO.box, M(0x3a3f4a, { r: 0.3, m: 0.4 }), 0, -0.52, 0.08, 0.12, 0.22, 0.04);
+      const scr = mesh(GEO.box, M(0xbfe8ff, { e: 0.9 }), 0, -0.52, 0.055, 0.1, 0.19, 0.01);
+      u.armR.add(cam, scr);
     }
-    if (ty === 'sequoia') {
-      g.add(mesh(GEO.box, M(0xf2ece2), 0, 0.52, 0.16, 0.52, 0.5, 0.16)); // the white puffer vest
-      armR.rotation.x = -2.5; // phone always up, always filming
-      const cam = mesh(GEO.box, M(0x22222a), 0, -0.34, 0.06, 0.1, 0.2, 0.04);
-      const scr = mesh(GEO.box, M(0xbfe8ff, { e: 0.7 }), 0, -0.34, 0.045, 0.08, 0.16, 0.01);
-      armR.add(cam, scr);
-    }
-    g.add(armL, armR, blob(0.4));
-    g.userData = { head, armL, armR, hat, ph: Math.random() * 6.28, ty };
+    if (ty === 'zillow' && id % 2 === 0) u.armR.rotation.x = -1.35; // pointing at the fixtures
     return castAll(g);
   }
 
@@ -1147,7 +1114,7 @@ export class World {
       if (d.so && Math.random() < 0.1) this.puff(this.steam, g.position.x, 0.6, g.position.z, { life: 0.7, v: 0.4, vy: -0.2, s: 0.09 });
       if (!u.micS) {
         u.micS = new THREE.Sprite(new THREE.SpriteMaterial({ map: emojiTexture('🔊'), transparent: true, depthWrite: false }));
-        u.micS.scale.set(0.5, 0.5, 1); u.micS.position.y = 2.15; u.micS.visible = false; g.add(u.micS);
+        u.micS.scale.set(0.5, 0.5, 1); u.micS.position.y = 2.5; u.micS.visible = false; g.add(u.micS);
       }
       u.micS.visible = !!(this.speakSet && this.speakSet.has(seat));
       const inert = d.ar || d.cb >= 0;
@@ -1160,9 +1127,8 @@ export class World {
       }
       u.carry.rotation.z = Math.sin(t * 12) * (d.wb || 0) * 0.5;
       u.head.rotation.z = Math.sin(u.ph * 0.5) * 0.05;
-      const legT = moving ? Math.sin(u.ph) * 0.85 : 0;
-      u.legL.rotation.x += (legT - u.legL.rotation.x) * lerpK * 1.8;
-      u.legR.rotation.x += (-legT - u.legR.rotation.x) * lerpK * 1.8;
+      const legT = moving ? Math.sin(u.ph) * 0.8 : 0;
+      setLegs(u, legT, -legT, Math.min(1, lerpK * 1.8), moving);
       const leanT = d.b ? -0.12 : moving ? -0.08 : 0;
       g.rotation.x += (leanT - g.rotation.x) * lerpK;
       if (!u.cone) {
@@ -1211,11 +1177,23 @@ export class World {
       if (d.st === 'drag') { g.rotation.z += (1.35 - g.rotation.z) * lerpK; g.position.y = 0.5; u.armL.rotation.x = Math.sin(t * 14) * 1.2; u.armR.rotation.x = -Math.sin(t * 14) * 1.2; }
       else if (d.st === 'air') { g.rotation.z += dt * 9; g.position.y = d.y; }
       else {
-        g.rotation.z *= 0.85; g.position.y += ((['sit', 'wait', 'eat', 'squat', 'sitT'].includes(d.st) ? 0.22 : 0) - g.position.y) * lerpK;
+        // a seated body drops so the hips meet the seat, not floats above it
+        g.rotation.z *= 0.85; g.position.y += ((['sit', 'wait', 'eat', 'squat', 'sitT'].includes(d.st) ? -0.27 : 0) - g.position.y) * lerpK;
         g.rotation.y += shortest(g.rotation.y, d.yw) * lerpK;
         u.ph += dt * (d.st === 'enter' || d.st === 'leave' || d.st === 'wander' || d.st === 'reseat' ? 9 : 1.6);
         const walking = ['enter', 'leave', 'wander', 'reseat'].includes(d.st);
-        if (walking) { g.position.y += Math.abs(Math.sin(u.ph)) * 0.05; u.armL.rotation.x = Math.sin(u.ph) * 0.5; if (u.ty !== 'sequoia') u.armR.rotation.x = -Math.sin(u.ph) * 0.5; }
+        const armFixed = u.ty === 'sequoia' || u.ty === 'flock' || u.ty === 'zillow';
+        if (walking) {
+          g.position.y += Math.abs(Math.sin(u.ph)) * 0.05;
+          u.armL.rotation.x = Math.sin(u.ph) * 0.5;
+          if (!armFixed) u.armR.rotation.x = -Math.sin(u.ph) * 0.5;
+          setLegs(u, Math.sin(u.ph) * 0.62, -Math.sin(u.ph) * 0.62, lerpK, true);
+        } else {
+          // seated: thighs forward off the hip, shins folded back down at the knee
+          const seated = ['sit', 'wait', 'eat', 'squat'].includes(d.st);
+          setLegs(u, seated ? -1.45 : 0, seated ? -1.45 : 0, lerpK, false, seated ? 1.45 : 0);
+          if (!armFixed) { u.armL.rotation.x *= 0.9; u.armR.rotation.x *= 0.9; }
+        }
         if (d.st === 'eat') u.head.rotation.x = Math.sin(t * 6) * 0.15;
       }
       if (u.hat) u.hat.rotation.z += ((d.yh ? 0.45 : 0) - u.hat.rotation.z) * lerpK; // the yee-haw tips the hat
@@ -1365,6 +1343,15 @@ export class World {
   }
 }
 function shortest(a, b) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
+// hip + knee in one call; snap while walking, ease into a held pose otherwise
+function setLegs(u, l, r, k, snap, knee = 0) {
+  if (!u.legL) return;
+  if (snap) { u.legL.rotation.x = l; u.legR.rotation.x = r; }
+  else { u.legL.rotation.x += (l - u.legL.rotation.x) * k; u.legR.rotation.x += (r - u.legR.rotation.x) * k; }
+  const kl = u.legL.userData.knee, kr = u.legR.userData.knee;
+  if (kl) { const t = snap ? Math.max(0, -l) * 0.55 : knee; kl.rotation.x += (t - kl.rotation.x) * (snap ? 1 : k); }
+  if (kr) { const t = snap ? Math.max(0, -r) * 0.55 : knee; kr.rotation.x += (t - kr.rotation.x) * (snap ? 1 : k); }
+}
 // eyes + brow: cheap, and in first person you are two feet from these faces
 function face(head, opt = {}) {
   const eyeW = opt.w ?? 0.1, ey = opt.y ?? 0.02, ez = opt.z ?? 0.46;
@@ -1376,6 +1363,111 @@ function face(head, opt = {}) {
   if (opt.mouth) head.add(mesh(GEO.box, M(0x8a4a44, { r: 0.5 }), 0, -0.17, ez - 0.02, opt.mouth, 0.035, 0.04));
 }
 function castAll(g) { g.traverse(o => { if (o.isMesh && o.material !== shadowMat) o.castShadow = true; }); return g; }
+
+// ---- the humanoid ----------------------------------------------------------
+// One builder for cooks and customers: torso + hips + two-segment arms with
+// hands + legs with shoes + a head that carries its own face. Each limb is a
+// merged mesh under an animation pivot, so a whole person is ~7 draw calls.
+const charMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.82, metalness: 0 });
+function limb(parts, px, py, pz) {
+  const g = new THREE.Group();
+  const mg = new Merger(false);
+  for (const p of parts) mg.add(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8] || 0, p[9] || 0, p[10] || 0);
+  g.add(mg.build({ mat: charMat, cast: true }));
+  g.position.set(px, py, pz);
+  return g;
+}
+function human(o) {
+  const g = new THREE.Group();
+  const skin = o.skin ?? PAL.skin[0];
+  const shirt = o.shirt ?? 0x9aa0a8, pants = o.pants ?? 0x4a5a6a, shoe = o.shoe ?? 0x3a2f28;
+  const S = o.scale ?? 1;
+  // ---- torso (static) ----
+  const b = new Merger(false);
+  b.add(GEO.box, pants, 0, 0.74, 0, 0.46, 0.3, 0.34);                       // hips
+  b.add(GEO.box, shirt, 0, 1.06, 0, 0.54, 0.48, 0.38);                      // chest
+  b.add(GEO.box, shirt, 0, 1.28, 0, 0.58, 0.14, 0.4);                       // shoulders
+  b.add(GEO.cyl, skin, 0, 1.38, 0, 0.19, 0.14, 0.19);                       // neck
+  if (o.apron) {                                                            // cook's apron + straps
+    b.add(GEO.box, o.apron, 0, 0.92, 0.21, 0.44, 0.78, 0.05);
+    b.add(GEO.box, o.apron, -0.13, 1.24, 0.2, 0.09, 0.2, 0.05);
+    b.add(GEO.box, o.apron, 0.13, 1.24, 0.2, 0.09, 0.2, 0.05);
+    b.add(GEO.box, o.apron, 0, 0.92, -0.2, 0.5, 0.09, 0.04);                // waist tie
+  }
+  if (o.vest) {                                                             // puffer vest, quilted
+    for (let i = 0; i < 3; i++) b.add(GEO.box, o.vest, 0, 0.92 + i * 0.19, 0, 0.6, 0.17, 0.45);
+  }
+  if (o.hoodie) {                                                           // hood bunched at the neck
+    b.add(GEO.sph, o.hoodie, 0, 1.34, -0.16, 0.5, 0.36, 0.4);
+    b.add(GEO.box, o.hoodie, 0, 1.1, 0.2, 0.5, 0.4, 0.06);
+  }
+  if (o.badge) b.add(GEO.box, PAL.white, 0.17, 1.14, 0.2, 0.13, 0.08, 0.03);
+  const body = b.build({ mat: charMat, cast: true });
+  g.add(body);
+  // ---- head ----
+  const head = new THREE.Group();
+  const h = new Merger(false);
+  h.add(GEO.sph, skin, 0, 0, 0, 0.58, 0.56, 0.56);
+  if (o.hair) {
+    h.add(GEO.sph, o.hair, 0, 0.16, -0.03, 0.6, 0.36, 0.58);
+    if (o.pony) h.add(GEO.sph, o.hair, 0, 0.05, -0.34, 0.22, 0.4, 0.22);
+    if (o.bun) h.add(GEO.sph, o.hair, 0, 0.3, -0.16, 0.26, 0.24, 0.26);
+  }
+  if (o.beard) h.add(GEO.box, o.beard, 0, -0.18, 0.16, 0.34, 0.12, 0.22);
+  // eyes + brows, straight into the merged head
+  // set flush into the skull — spheres proud of the surface read as googly eyes
+  for (const s of [-1, 1]) {
+    h.add(GEO.sph, PAL.white, s * 0.14, 0.02, 0.225, 0.085, 0.1, 0.05);
+    h.add(GEO.sph, 0x22222a, s * 0.14, 0.02, 0.25, 0.05, 0.058, 0.035);
+    if (o.brow) h.add(GEO.box, o.brow, s * 0.14, 0.125, 0.235, 0.12, 0.03, 0.04);
+  }
+  if (o.mouth !== 0) h.add(GEO.box, 0x8a4a44, 0, -0.16, 0.25, o.mouth || 0.12, 0.03, 0.04);
+  head.add(h.build({ mat: charMat, cast: true }));
+  if (o.hat === 'paper') {                                                  // cook's folded cap
+    head.add(mesh(GEO.cyl, M(PAL.white), 0, 0.3, 0, 0.5, 0.3, 0.5));
+    head.add(mesh(GEO.box, M(PAL.white), 0, 0.2, 0, 0.56, 0.12, 0.5));
+  } else if (o.hat === 'cowboy') {
+    head.add(mesh(GEO.cyl, M(o.hatC || 0xd8bc8a), 0, 0.12, 0, 1.02, 0.06, 0.92));
+    head.add(mesh(GEO.cyl, M(o.hatC || 0xd8bc8a), 0, 0.28, 0, 0.52, 0.3, 0.52));
+    head.add(mesh(GEO.box, M(0x6b4f33), 0, 0.18, 0, 0.54, 0.06, 0.54));
+  } else if (o.hat === 'cap') {
+    head.add(mesh(GEO.sph, M(o.hatC || 0xc44536), 0, 0.16, 0, 0.62, 0.36, 0.6));
+    head.add(mesh(GEO.box, M(o.hatC || 0xc44536), 0, 0.1, 0.3, 0.44, 0.06, 0.3));
+  } else if (o.hat === 'beanie') {
+    head.add(mesh(GEO.sph, M(o.hatC || 0x6a7a5a), 0, 0.16, 0, 0.62, 0.42, 0.6));
+  } else if (o.hat === 'band') {
+    head.add(mesh(GEO.box, M(o.hatC || 0xe8e2d6), 0, 0.16, 0, 0.6, 0.12, 0.58));
+  }
+  if (o.glasses) head.add(mesh(GEO.box, M(o.glasses, { r: 0.25, m: 0.3 }), 0, 0.02, 0.28, 0.36, 0.09, 0.05));
+  head.position.y = 1.52; g.add(head);
+  // ---- limbs ----
+  const armParts = c => [
+    [GEO.box, c, 0, -0.16, 0, 0.15, 0.32, 0.15],
+    [GEO.box, o.sleeve ?? c, 0, -0.42, 0, 0.13, 0.26, 0.13],
+    [GEO.sph, skin, 0, -0.58, 0, 0.17, 0.16, 0.16],
+  ];
+  const armL = limb(armParts(shirt), -0.34, 1.26, 0);
+  const armR = limb(armParts(shirt), 0.34, 1.26, 0);
+  // legs get a real knee: without one, a seated pose sticks both shins straight
+  // out into the aisle
+  const mkLeg = px => {
+    const hip = limb([[GEO.box, pants, 0, -0.2, 0, 0.19, 0.4, 0.19]], px, 0.76, 0);
+    const knee = new THREE.Group(); knee.position.y = -0.4;
+    const s = new Merger(false);
+    s.add(GEO.box, pants, 0, -0.14, 0, 0.17, 0.28, 0.17);
+    s.add(GEO.box, shoe, 0, -0.31, 0.05, 0.21, 0.12, 0.3);
+    knee.add(s.build({ mat: charMat, cast: true }));
+    hip.add(knee); hip.userData.knee = knee;
+    return hip;
+  };
+  const legL = mkLeg(-0.15), legR = mkLeg(0.15);
+  g.add(armL, armR, legL, legR);
+  const carry = new THREE.Group(); carry.position.set(0, 1.02, 0.46); g.add(carry);
+  g.add(blob(0.44));
+  if (S !== 1) g.scale.setScalar(S);
+  g.userData = { head, armL, armR, legL, legR, carry, ph: Math.random() * 6.28 };
+  return g;
+}
 // ⚠️ every item ships with a ground blob shadow; in the first-person hands rig
 // that disc sits inches from the lens and reads as a black slab across frame
 function stripBlob(g) {
