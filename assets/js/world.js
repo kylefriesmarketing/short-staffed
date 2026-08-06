@@ -4,10 +4,11 @@
 // Math.random is allowed here, the sim never sees any of this.
 import * as THREE from '../vendor/three.module.js';
 import { C, LAYOUT } from './sim.js';
+import { Post } from './post.js';
 
 const PAL = {
   cream: 0xf3e5c8, creamDark: 0xe4d2ac, teal: 0x8fb8ad, tealDark: 0x6e968b,
-  wood: 0x8a6844, woodDark: 0x6b4f33, top: 0xa77e52, steel: 0x9aa1a8, steelDark: 0x5c6167,
+  wood: 0x8a6844, woodDark: 0x6b4f33, top: 0xa77e52, steel: 0xb3bcc4, steelDark: 0x7f8891,
   floorA: 0xe8d9b8, floorB: 0xcfd8c6, hazard: 0xff5a26, white: 0xfff6e8,
   aprons: [0xd94f38, 0x3a76c4, 0xe8b53a, 0x5c9e4f],
   skin: [0xe8b48c, 0xc98e66, 0xf0c8a0, 0xa9764f],
@@ -19,9 +20,12 @@ const PAL = {
 };
 const mats = new Map();
 function M(color, opt = {}) {
-  const key = color + '|' + (opt.e || 0) + '|' + (opt.t || 0);
+  const key = color + '|' + (opt.e || 0) + '|' + (opt.t || 0) + '|' + (opt.m || 0) + '|' + (opt.r ?? '');
   if (!mats.has(key)) {
-    const m = new THREE.MeshLambertMaterial({ color, flatShading: true });
+    const m = new THREE.MeshStandardMaterial({
+      color, flatShading: true,
+      roughness: opt.r ?? 0.86, metalness: opt.m || 0,
+    });
     if (opt.e) { m.emissive = new THREE.Color(color); m.emissiveIntensity = opt.e; }
     if (opt.t) { m.transparent = true; m.opacity = opt.t; }
     mats.set(key, m);
@@ -43,9 +47,12 @@ function mesh(g, mat, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1, ry = 0) {
   m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.rotation.y = ry;
   return m;
 }
-// merge static boxes/cyls into one vertex-colored geometry (draw-call budget)
+// merge static boxes/cyls into one vertex-colored geometry (draw-call budget).
+// Vertex colours also carry a cheap baked AO: everything darkens toward the
+// floor and on downward faces, which is what stops a flat-shaded room from
+// looking like untextured blocks.
 class Merger {
-  constructor() { this.pos = []; this.nor = []; this.col = []; this._c = new THREE.Color(); this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._e = new THREE.Euler(); }
+  constructor(ao = true) { this.ao = ao; this.pos = []; this.nor = []; this.col = []; this._c = new THREE.Color(); this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._e = new THREE.Euler(); }
   add(geo, color, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) {
     const g = geo.index ? geo.toNonIndexed() : geo.clone();
     this._e.set(rx, ry, rz); this._q.setFromEuler(this._e);
@@ -53,18 +60,37 @@ class Merger {
     g.applyMatrix4(this._m);
     const p = g.attributes.position, n = g.attributes.normal; this._c.set(color);
     for (let i = 0; i < p.count; i++) {
-      this.pos.push(p.getX(i), p.getY(i), p.getZ(i));
-      this.nor.push(n.getX(i), n.getY(i), n.getZ(i));
-      this.col.push(this._c.r, this._c.g, this._c.b);
+      const vy = p.getY(i), ny = n.getY(i);
+      let k = 1;
+      if (this.ao) {
+        // gentle contact darkening on VERTICAL/downward faces only — baking it
+        // into up-facing surfaces just muddies the floor and the counter tops
+        if (ny > 0.45) k = 1;
+        else {
+          const f = Math.min(1, Math.max(0, vy / 1.6));
+          k = 0.82 + 0.18 * (f * f * (3 - 2 * f));
+          if (ny < -0.5) k *= 0.9;                               // undersides
+        }
+      }
+      this.pos.push(p.getX(i), vy, p.getZ(i));
+      this.nor.push(n.getX(i), ny, n.getZ(i));
+      this.col.push(this._c.r * k, this._c.g * k, this._c.b * k);
     }
     g.dispose();
   }
-  build() {
+  build(opt = {}) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
-    return new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true, flatShading: true,
+      roughness: opt.r ?? 0.9, metalness: opt.m ?? 0,
+    });
+    if (opt.e) { mat.emissive = new THREE.Color(0xffffff); mat.emissiveIntensity = opt.e; mat.vertexColors = true; }
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.castShadow = !!opt.cast; mesh.receiveShadow = opt.recv !== false;
+    return mesh;
   }
 }
 const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, depthWrite: false });
@@ -111,15 +137,47 @@ export class World {
   constructor(canvas) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xf7cf9e);
-    this.scene.fog = new THREE.Fog(0xf7cf9e, 26, 60);
-    this.camera = new THREE.PerspectiveCamera(56, 1, 0.1, 120);
+    this.scene.fog = new THREE.Fog(0xf7cf9e, 30, 70);
+    this.camera = new THREE.PerspectiveCamera(56, 1, 0.08, 140);
     this.camTgt = new THREE.Vector3(0, 0, 1);
     this.camPos = new THREE.Vector3(0, 12, 10);
-    this.sun = new THREE.DirectionalLight(0xffd9a0, 1.35); this.sun.position.set(-7, 11, 5);
-    this.hemi = new THREE.HemisphereLight(0xfff2dc, 0x9a7f5c, 0.95);
-    this.scene.add(this.sun, this.hemi);
+    this.fp = true; this.look = { yaw: 0, pitch: 0 }; this.bob = 0; this.fovBase = 62;
+    // key light: real shadow map, frustum wrapped tight around the diner so the
+    // texel density is high enough for a toy-sized cook to cast a readable shadow
+    this.sun = new THREE.DirectionalLight(0xffe0b0, 2.1);
+    this.sun.position.set(-9, 13, 6);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.camera.left = -17; this.sun.shadow.camera.right = 17;
+    this.sun.shadow.camera.top = 20; this.sun.shadow.camera.bottom = -14;
+    this.sun.shadow.camera.near = 1; this.sun.shadow.camera.far = 48;
+    this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.022;
+    this.sun.shadow.radius = 2.5;
+    this.hemi = new THREE.HemisphereLight(0xfff4e2, 0xd6c3a2, 1.15);
+    this.fill = new THREE.DirectionalLight(0xbfd8ff, 0.4); this.fill.position.set(8, 6, -9);
+    // interiors need bounce: without it, ceilings and shaded sides go to mud
+    this.amb = new THREE.AmbientLight(0xfff0dc, 0.55);
+    // warm practical over the pass so the kitchen half isn't lit only from outside
+    this.pass1 = new THREE.PointLight(0xffcf96, 0.9, 16, 1.6); this.pass1.position.set(-4, 2.5, -4.4);
+    this.pass2 = new THREE.PointLight(0xffe0b4, 0.7, 15, 1.6); this.pass2.position.set(-4.5, 2.4, 2.5);
+    this.scene.add(this.sun, this.sun.target, this.hemi, this.fill, this.amb, this.pass1, this.pass2);
+    // procedural environment: warm sky over a cream room, so metal has something
+    // to reflect instead of reading as flat grey plastic
+    const envCv = document.createElement('canvas'); envCv.width = 32; envCv.height = 32;
+    const ex = envCv.getContext('2d');
+    const eg = ex.createLinearGradient(0, 0, 0, 32);
+    eg.addColorStop(0, '#ffeccb'); eg.addColorStop(0.48, '#fff6e6');
+    eg.addColorStop(0.52, '#e7d8bc'); eg.addColorStop(1, '#c2ae90');
+    ex.fillStyle = eg; ex.fillRect(0, 0, 32, 32);
+    const envTex = new THREE.CanvasTexture(envCv);
+    envTex.mapping = THREE.EquirectangularReflectionMapping;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromEquirectangular(envTex).texture;
+    pmrem.dispose(); envTex.dispose();
     this._cB = new THREE.Color(); this._cB2 = new THREE.Color();
     this.simPh = 'lobby'; this.simT = 0; this._dayF = 0;
     this.pl = new Map(); this.cu = new Map(); this.it = new Map(); this.fi = new Map();
@@ -130,17 +188,56 @@ export class World {
     this.highlight = mesh(new THREE.RingGeometry(0.42, 0.55, 18), new THREE.MeshBasicMaterial({ color: PAL.white, transparent: true, opacity: 0.85, depthWrite: false }));
     this.highlight.rotation.x = -Math.PI / 2; this.highlight.position.y = 0.04; this.highlight.visible = false; this.highlight.renderOrder = 3;
     this.scene.add(this.highlight);
+    this.buildHands();
+    this.post = new Post(this.renderer, this.scene, this.camera);
     this.resize();
+  }
+  // first-person hands: two forearms low in frame plus whatever you're carrying.
+  // Parented to the camera, drawn by the same pass (no separate overlay scene).
+  buildHands() {
+    this.hands = new THREE.Group();
+    const mk = s => {
+      const g = new THREE.Group();
+      g.add(mesh(GEO.box, M(PAL.white, { r: 0.8 }), 0, 0, 0, 0.14, 0.42, 0.14));
+      g.add(mesh(GEO.sph, M(PAL.skin[0]), 0, -0.24, 0.02, 0.17, 0.15, 0.17));
+      g.position.set(0.26 * s, -0.42, -0.5);
+      g.rotation.set(-1.15, 0, -0.16 * s);
+      return g;
+    };
+    this.handL = mk(-1); this.handR = mk(1);
+    this.handItem = new THREE.Group();
+    this.handItem.position.set(0.26, -0.44, -0.66);
+    this.handItem.scale.setScalar(0.5);
+    this.hands.add(this.handL, this.handR, this.handItem);
+    this.camera.add(this.hands);
+    this.scene.add(this.camera);
+    this.handKey = '';
+  }
+  setHandItem(mini, stack) {
+    const key = (mini ? this.itemKey(mini) : '') + '|' + (stack || []).map(s => this.itemKey(s)).join(',');
+    if (key === this.handKey) return;
+    this.handKey = key;
+    while (this.handItem.children.length) this.handItem.remove(this.handItem.children[0]);
+    if (mini) {
+      this.handItem.add(stripBlob(this.buildItem(mini)));
+      (stack || []).forEach((s, i) => { const im = stripBlob(this.buildItem(s)); im.position.y = 0.2 * (i + 1); im.rotation.y = (i + 1) * 0.4; this.handItem.add(im); });
+    }
+    const holding = !!mini;
+    this.handL.rotation.x = holding ? -1.5 : -1.15;
+    this.handR.rotation.x = holding ? -1.5 : -1.15;
   }
   resize() {
     const w = innerWidth, h = innerHeight;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    if (this.post) this.post.setSize(w, h);
   }
 
   // ---- static room -----------------------------------------------------------
   buildRoom() {
-    const m = new Merger();
+    const m = new Merger();            // matte: walls, wood, floor
+    const mt = new Merger();           // metal: stations, chrome, fixtures
+    const gl = new Merger(false);      // emissive: lamps, windows, heat strip
     // checker floor as one merged grid of thin boxes — per-tile jitter + worn patches
     const wearC = new THREE.Color();
     for (let i = 0; i < 24; i++) for (let j = 0; j < 14; j++) {
@@ -156,20 +253,94 @@ export class World {
     // porch + dirt yard outside the door
     m.add(GEO.box, PAL.woodDark, LAYOUT.door.x, -0.06, 8.3, 4.6, 0.1, 2.6);
     m.add(GEO.box, 0xcbb27e, 2, -0.12, 9.5, 26, 0.1, 5);
-    // walls (south low, door gap)
-    m.add(GEO.box, PAL.cream, 0, 1.2, -7.25, 24.7, 2.4, 0.5);
-    m.add(GEO.box, PAL.cream, -12.25, 1.2, 0, 0.5, 2.4, 14.5);
-    m.add(GEO.box, PAL.cream, 12.25, 1.2, 0, 0.5, 2.4, 14.5);
+    // walls — full height now that the camera lives at eye level.
+    // The north wall is built as piers around three REAL openings; a painted-on
+    // window panel reads as a glowing white slab from the inside and you lose
+    // the whole reason the diner faces the mountains.
+    const WH = 3.3, WINS = [-9, -4, 1], WW = 2.72, WY0 = 0.95, WY1 = 2.52;
+    const edges = [-12.25];
+    for (const wx of WINS) edges.push(wx - WW / 2, wx + WW / 2);
+    edges.push(12.25);
+    for (let i = 0; i < edges.length; i += 2) {
+      const a = edges[i], b = edges[i + 1];
+      if (b - a > 0.02) m.add(GEO.box, PAL.cream, (a + b) / 2, WH / 2, -7.25, b - a, WH, 0.5);
+    }
+    for (const wx of WINS) {
+      m.add(GEO.box, PAL.cream, wx, WY0 / 2, -7.25, WW, WY0, 0.5);              // under-sill
+      m.add(GEO.box, PAL.cream, wx, (WY1 + WH) / 2, -7.25, WW, WH - WY1, 0.5);  // header
+    }
+    m.add(GEO.box, PAL.cream, -12.25, WH / 2, 0, 0.5, WH, 14.5);
+    m.add(GEO.box, PAL.cream, 12.25, WH / 2, 0, 0.5, WH, 14.5);
     const d = LAYOUT.door;
-    m.add(GEO.box, PAL.cream, (-12 + (d.x - d.gap)) / 2, 0.5, 7.25, (d.x - d.gap) + 12, 1.0, 0.5);
-    m.add(GEO.box, PAL.cream, (d.x + d.gap + 12) / 2, 0.5, 7.25, 12 - (d.x + d.gap), 1.0, 0.5);
-    m.add(GEO.box, PAL.teal, d.x - d.gap, 1.1, 7.25, 0.22, 2.2, 0.3); // door posts
-    m.add(GEO.box, PAL.teal, d.x + d.gap, 1.1, 7.25, 0.22, 2.2, 0.3);
-    m.add(GEO.box, PAL.teal, d.x, 2.25, 7.25, d.gap * 2 + 0.2, 0.22, 0.3);
-    // windows on the north wall (sky shine planes added separately)
-    for (const wx of [-9, -4, 1]) m.add(GEO.box, PAL.teal, wx, 1.5, -7.02, 2.6, 1.3, 0.1);
-    // baseboard trim
-    m.add(GEO.box, PAL.tealDark, 0, 0.12, -6.98, 24, 0.24, 0.06);
+    m.add(GEO.box, PAL.cream, (-12 + (d.x - d.gap)) / 2, WH / 2, 7.25, (d.x - d.gap) + 12, WH, 0.5);
+    m.add(GEO.box, PAL.cream, (d.x + d.gap + 12) / 2, WH / 2, 7.25, 12 - (d.x + d.gap), WH, 0.5);
+    m.add(GEO.box, PAL.cream, d.x, 2.85, 7.25, d.gap * 2 + 0.5, 0.9, 0.5); // header over the door
+    m.add(GEO.box, PAL.teal, d.x - d.gap, 1.1, 7.25, 0.22, 2.2, 0.55);     // door posts
+    m.add(GEO.box, PAL.teal, d.x + d.gap, 1.1, 7.25, 0.22, 2.2, 0.55);
+    m.add(GEO.box, PAL.teal, d.x, 2.25, 7.25, d.gap * 2 + 0.2, 0.22, 0.55);
+    // wainscot + chair rail down every wall — the single biggest "this is a room,
+    // not a box" cue at eye level
+    for (let wx = -11.6; wx <= 11.6; wx += 0.62) {
+      m.add(GEO.box, PAL.tealDark, wx, 0.52, -6.96, 0.5, 1.02, 0.06);
+      if (wx > 4.2 || wx < 2.2) m.add(GEO.box, PAL.tealDark, wx, 0.52, 6.96, 0.5, 1.02, 0.06);
+    }
+    for (let wz = -6.6; wz <= 6.6; wz += 0.62) {
+      m.add(GEO.box, PAL.tealDark, -11.96, 0.52, wz, 0.06, 1.02, 0.5);
+      m.add(GEO.box, PAL.tealDark, 11.96, 0.52, wz, 0.06, 1.02, 0.5);
+    }
+    m.add(GEO.box, PAL.wood, 0, 1.08, -6.94, 24, 0.12, 0.12);        // chair rail
+    m.add(GEO.box, PAL.wood, -11.94, 1.08, 0, 0.12, 0.12, 14);
+    m.add(GEO.box, PAL.wood, 11.94, 1.08, 0, 0.12, 0.12, 14);
+    m.add(GEO.box, PAL.tealDark, 0, 0.09, -6.92, 24, 0.18, 0.1);     // baseboard
+    m.add(GEO.box, PAL.tealDark, -11.92, 0.09, 0, 0.1, 0.18, 14);
+    m.add(GEO.box, PAL.tealDark, 11.92, 0.09, 0, 0.1, 0.18, 14);
+    m.add(GEO.box, PAL.woodDark, 0, WH - 0.12, -6.9, 24, 0.16, 0.14); // crown moulding
+    // window joinery around the openings: jambs, mullions, sill, curtains
+    for (const wx of WINS) {
+      const hw = WW / 2;
+      m.add(GEO.box, PAL.teal, wx - hw, (WY0 + WY1) / 2, -7.02, 0.16, WY1 - WY0, 0.5);
+      m.add(GEO.box, PAL.teal, wx + hw, (WY0 + WY1) / 2, -7.02, 0.16, WY1 - WY0, 0.5);
+      m.add(GEO.box, PAL.teal, wx, WY1 - 0.06, -7.02, WW, 0.14, 0.5);
+      m.add(GEO.box, PAL.teal, wx, WY0 + 0.05, -7.02, WW, 0.14, 0.5);
+      m.add(GEO.box, PAL.teal, wx, (WY0 + WY1) / 2, -7.06, 0.1, WY1 - WY0, 0.1);   // mullions
+      m.add(GEO.box, PAL.teal, wx, (WY0 + WY1) / 2, -7.06, WW, 0.1, 0.1);
+      m.add(GEO.box, PAL.wood, wx, WY0 + 0.02, -6.88, WW + 0.4, 0.12, 0.42);        // sill
+      const cy = (WY0 + WY1) / 2;
+      m.add(GEO.box, 0xb85a4a, wx - hw - 0.16, cy, -6.86, 0.3, WY1 - WY0 - 0.1, 0.1); // curtains
+      m.add(GEO.box, 0xb85a4a, wx + hw + 0.16, cy, -6.86, 0.3, WY1 - WY0 - 0.1, 0.1);
+      m.add(GEO.box, 0xb85a4a, wx, WY1 + 0.16, -6.86, WW + 0.7, 0.22, 0.12);          // valance
+    }
+    // ceiling + joists (only drawn in first person; it would blind the top-down view)
+    const cm = new Merger(false);
+    cm.add(GEO.box, 0xe9dcc0, 0, WH + 0.08, 0, 24.7, 0.16, 14.5);
+    for (let bx = -10; bx <= 10; bx += 4) cm.add(GEO.box, PAL.woodDark, bx, WH - 0.06, 0, 0.3, 0.22, 14.5);
+    this.ceiling = cm.build({ r: 0.95 });
+    this.ceiling.receiveShadow = true;
+    this.scene.add(this.ceiling);
+    // pendant lamps over the dining room — cord, shade, and a hot bulb for bloom
+    for (const [lx, lz] of [[-8.5, 1.2], [-4.5, 1.2], [-0.5, 1.2], [-8.5, 4.8], [-4.5, 4.8], [-0.5, 4.8], [0.5, -1.9]]) {
+      m.add(GEO.cyl, 0x2c2c30, lx, WH - 0.45, lz, 0.035, 0.9, 0.035);
+      m.add(GEO.cone, 0xc44536, lx, WH - 1.02, lz, 0.86, 0.42, 0.86, Math.PI, 0, 0);
+      gl.add(GEO.sph, 0xfff0c8, lx, WH - 1.2, lz, 0.26, 0.26, 0.26);
+    }
+    // heat-lamp strip over the pass (the other bloom source, and it's diegetic)
+    gl.add(GEO.box, 0xff8a3a, -2.4, 2.05, -2.6, 7.2, 0.09, 0.26);
+    m.add(GEO.box, PAL.steelDark, -2.4, 2.2, -2.6, 7.4, 0.22, 0.4);
+    for (const hx of [-5.6, -2.4, 0.8]) m.add(GEO.cyl, PAL.steelDark, hx, 2.75, -2.6, 0.05, 1.1, 0.05);
+    // menu board over the pass
+    m.add(GEO.box, 0x2c2620, 5.4, 2.35, -6.9, 4.6, 1.5, 0.12);
+    m.add(GEO.box, PAL.wood, 5.4, 2.35, -6.96, 4.9, 1.7, 0.06);
+    for (let r = 0; r < 5; r++) for (const [sx, sw] of [[-1.5, 1.8], [1.1, 1.1]])
+      m.add(GEO.box, r % 2 ? 0xd8cba8 : 0xbfae86, 5.4 + sx, 2.85 - r * 0.26, -6.83, sw, 0.1, 0.02);
+    // wall clock + framed photos (Hazel's diner, before)
+    m.add(GEO.cyl, PAL.woodDark, -6.5, 2.62, -6.88, 0.62, 0.08, 0.62, Math.PI / 2, 0, 0);
+    m.add(GEO.cyl, PAL.white, -6.5, 2.62, -6.83, 0.52, 0.03, 0.52, Math.PI / 2, 0, 0);
+    m.add(GEO.box, 0x2c2620, -6.5, 2.68, -6.81, 0.04, 0.2, 0.02);
+    m.add(GEO.box, 0x2c2620, -6.56, 2.62, -6.81, 0.16, 0.04, 0.02);
+    for (const [px, py, pw, ph] of [[-11.94, 1.9, 0.5, 0.4], [-11.94, 2.5, 0.4, 0.5], [-11.94, 1.35, 0.42, 0.34]]) {
+      m.add(GEO.box, PAL.woodDark, px, py, 4.4, 0.06, ph + 0.1, pw + 0.1);
+      m.add(GEO.box, 0xd8c6a0, px + 0.04, py, 4.4, 0.02, ph, pw);
+    }
     // counter runs + tops
     const ct = LAYOUT.counter;
     const w1 = { x: (ct.x0 + ct.gapX0) / 2, w: ct.gapX0 - ct.x0 }, w2 = { x: (ct.gapX1 + 12) / 2, w: 12 - ct.gapX1 };
@@ -178,21 +349,27 @@ export class World {
       m.add(GEO.box, PAL.top, r.x, 0.95, ct.z, r.w + 0.12, 0.1, 0.9);
     }
     for (const ps of LAYOUT.pass) m.add(GEO.box, PAL.teal, ps.x, 1.005, ps.z, 0.9, 0.02, 0.7); // pass mats
-    // kitchen stations
-    m.add(GEO.box, PAL.steelDark, -8, 0.5, -6.35, 2.7, 1.0, 1.1);       // griddle body
-    m.add(GEO.box, PAL.steel, -8, 1.02, -6.35, 2.5, 0.08, 0.95);        // flat top
-    m.add(GEO.box, PAL.steelDark, -8, 2.35, -6.6, 2.3, 0.5, 0.6);       // hood
-    m.add(GEO.box, PAL.steel, -5.5, 0.5, -6.35, 1.6, 1.0, 1.1);         // range
-    m.add(GEO.cyl, 0x2c2c30, -5.5, 1.04, -6.1, 0.9, 0.08, 0.9);         // burner
-    m.add(GEO.cyl, 0x3a3a40, -5.5, 1.1, -6.1, 0.75, 0.08, 0.75);        // pan
-    m.add(GEO.box, 0x3a3a40, -4.85, 1.1, -6.1, 0.5, 0.06, 0.12);        // handle
+    // kitchen stations — steel goes in the metal group so it reflects the room
+    mt.add(GEO.box, PAL.steelDark, -8, 0.5, -6.35, 2.7, 1.0, 1.1);      // griddle body
+    mt.add(GEO.box, PAL.steel, -8, 1.02, -6.35, 2.5, 0.08, 0.95);       // flat top
+    mt.add(GEO.box, PAL.steelDark, -8, 2.45, -6.6, 2.6, 0.62, 0.7);     // hood
+    mt.add(GEO.box, PAL.steelDark, -8, 2.05, -6.5, 2.6, 0.3, 0.5, 0.42);// hood lip
+    mt.add(GEO.box, PAL.steel, -5.5, 0.5, -6.35, 1.6, 1.0, 1.1);        // range
+    mt.add(GEO.cyl, 0x5e646c, -5.5, 1.04, -6.1, 0.9, 0.08, 0.9);        // burner
+    mt.add(GEO.cyl, 0x6e757e, -5.5, 1.1, -6.1, 0.75, 0.08, 0.75);       // pan
+    mt.add(GEO.box, 0x4a4f56, -4.85, 1.1, -6.1, 0.5, 0.06, 0.12);       // handle
     m.add(GEO.box, PAL.wood, -2.5, 0.5, -6.35, 1.9, 1.0, 1.1);          // bev cabinet
-    m.add(GEO.box, PAL.steel, -2.5, 1.06, -6.35, 1.8, 0.12, 0.95);
+    mt.add(GEO.box, PAL.steel, -2.5, 1.06, -6.35, 1.8, 0.12, 0.95);
     m.add(GEO.box, 0x6b4226, -2.9, 1.5, -6.2, 0.42, 0.75, 0.5);         // coffee urn
     m.add(GEO.box, 0x5c8a4d, -2.1, 1.5, -6.2, 0.42, 0.75, 0.5);         // matcha urn
-    m.add(GEO.box, PAL.steel, 1.5, 0.5, -6.35, 1.4, 1.0, 1.1);          // sink
-    m.add(GEO.box, 0x7d848b, 1.5, 1.0, -6.3, 1.1, 0.14, 0.8);
-    m.add(GEO.cyl, PAL.steelDark, 1.5, 1.45, -6.6, 0.08, 0.7, 0.08);    // faucet
+    gl.add(GEO.box, 0xff5a26, -2.9, 1.16, -5.95, 0.3, 0.05, 0.1);       // warmer plate
+    mt.add(GEO.box, PAL.steel, 1.5, 0.5, -6.35, 1.4, 1.0, 1.1);         // sink
+    mt.add(GEO.box, 0x7d848b, 1.5, 1.0, -6.3, 1.1, 0.14, 0.8);
+    mt.add(GEO.cyl, PAL.steelDark, 1.5, 1.45, -6.6, 0.08, 0.7, 0.08);   // faucet
+    mt.add(GEO.box, PAL.steelDark, 1.5, 1.78, -6.45, 0.06, 0.06, 0.34);
+    // wire shelf over the pass with spare plates
+    mt.add(GEO.box, PAL.steel, -6.5, 1.95, -6.7, 3.4, 0.05, 0.5);
+    for (const px of [-7.6, -6.6, -5.6]) mt.add(GEO.cyl, PAL.white, px, 2.06, -6.7, 0.44, 0.18, 0.44);
     m.add(GEO.cyl6, 0x4c5c46, 3.1, 0.55, -6.35, 0.8, 1.1, 0.8);         // bin
     m.add(GEO.box, PAL.wood, -10.6, 1.3, -6.6, 1.3, 0.1, 0.6);          // shelf board
     for (const c of LAYOUT.crates) {                                     // crates
@@ -204,19 +381,39 @@ export class World {
     // tables + chairs + stools + register + jukebox
     for (const t of LAYOUT.tables) {
       m.add(GEO.cyl6, PAL.woodDark, t.x, 0.35, t.z, 0.24, 0.7, 0.24);
+      m.add(GEO.cyl, PAL.woodDark, t.x, 0.05, t.z, 0.9, 0.1, 0.9);      // foot
       m.add(GEO.cyl, PAL.cream, t.x, 0.72, t.z, 1.5, 0.1, 1.5);
       m.add(GEO.cyl, PAL.teal, t.x, 0.745, t.z, 1.0, 0.06, 1.0);
+      // condiment caddy: the clutter that makes a table read as a real table
+      m.add(GEO.box, PAL.steelDark, t.x + 0.42, 0.83, t.z - 0.42, 0.26, 0.1, 0.26);
+      m.add(GEO.cyl, 0xc44536, t.x + 0.36, 0.92, t.z - 0.48, 0.09, 0.16, 0.09);  // ketchup
+      m.add(GEO.cyl, 0xf5e04a, t.x + 0.48, 0.92, t.z - 0.48, 0.09, 0.16, 0.09);  // mustard
+      m.add(GEO.cyl, PAL.white, t.x + 0.36, 0.9, t.z - 0.36, 0.06, 0.12, 0.06);  // salt
+      m.add(GEO.cyl, 0x4a4a52, t.x + 0.48, 0.9, t.z - 0.36, 0.06, 0.12, 0.06);   // pepper
+      mt.add(GEO.box, PAL.steel, t.x - 0.44, 0.87, t.z - 0.44, 0.24, 0.18, 0.14); // napkins
       for (const s of t.seats) {
         const a = Math.atan2(t.x - s.x, t.z - s.z);
-        m.add(GEO.box, PAL.wood, s.x, 0.25, s.z, 0.42, 0.5, 0.42, 0, a, 0);
-        m.add(GEO.box, PAL.wood, s.x - Math.sin(a) * 0.2, 0.62, s.z - Math.cos(a) * 0.2, 0.42, 0.5, 0.08, 0, a, 0);
+        m.add(GEO.box, PAL.wood, s.x, 0.44, s.z, 0.42, 0.09, 0.42, 0, a, 0);      // seat pad
+        m.add(GEO.box, 0xc44536, s.x, 0.49, s.z, 0.36, 0.04, 0.36, 0, a, 0);      // vinyl
+        for (const [lx, lz] of [[-0.15, -0.15], [0.15, -0.15], [-0.15, 0.15], [0.15, 0.15]])
+          m.add(GEO.box, PAL.woodDark, s.x + lx, 0.2, s.z + lz, 0.05, 0.4, 0.05); // legs
+        m.add(GEO.box, PAL.wood, s.x - Math.sin(a) * 0.19, 0.72, s.z - Math.cos(a) * 0.19, 0.42, 0.5, 0.07, 0, a, 0);
       }
     }
     for (const s of LAYOUT.stools) {
-      m.add(GEO.cyl6, PAL.steelDark, s.x, 0.3, s.z, 0.14, 0.6, 0.14);
-      m.add(GEO.cyl, 0xc44536, s.x, 0.62, s.z, 0.52, 0.12, 0.52);
+      mt.add(GEO.cyl6, PAL.steelDark, s.x, 0.3, s.z, 0.14, 0.6, 0.14);
+      mt.add(GEO.cyl, PAL.steelDark, s.x, 0.03, s.z, 0.5, 0.06, 0.5);   // base
+      mt.add(GEO.cyl, PAL.steelDark, s.x, 0.26, s.z, 0.42, 0.05, 0.42); // footrest ring
+      m.add(GEO.cyl, 0xc44536, s.x, 0.62, s.z, 0.54, 0.14, 0.54);
+      m.add(GEO.cyl, 0x8a2f22, s.x, 0.68, s.z, 0.5, 0.04, 0.5);
     }
-    m.add(GEO.box, 0x4a4a52, 5.9, 1.25, -2.6, 0.8, 0.6, 0.6);           // register on east counter
+    mt.add(GEO.box, 0x4a4a52, 5.9, 1.25, -2.6, 0.8, 0.6, 0.6);          // register on east counter
+    mt.add(GEO.box, 0x2c2c30, 5.9, 1.5, -2.45, 0.5, 0.3, 0.3, -0.5);
+    gl.add(GEO.box, 0x7fd8a0, 5.9, 1.53, -2.38, 0.36, 0.16, 0.02);      // register readout
+    // pie case on the pass — glass dome + a whole huckleberry pie
+    m.add(GEO.cyl, PAL.white, 3.4, 1.02, -2.6, 0.72, 0.06, 0.72);
+    m.add(GEO.cyl, 0x8a5a3a, 3.4, 1.09, -2.6, 0.6, 0.1, 0.6);
+    m.add(GEO.cyl, 0x5a3a6a, 3.4, 1.14, -2.6, 0.5, 0.04, 0.5);
     m.add(GEO.box, PAL.wood, 7.6, 0.7, -0.9, 1.1, 1.4, 0.7);            // jukebox
     m.add(GEO.sph, PAL.teal, 7.6, 1.45, -0.9, 1.1, 0.7, 0.7);
     // elk head, west wall
@@ -229,24 +426,48 @@ export class World {
     }
     // extinguisher wall mount plate
     m.add(GEO.box, 0xb03a2a, LAYOUT.extHook.x, 1.35, -6.95, 0.4, 0.55, 0.08);
-    // mountains + a couple of pines out the windows
-    for (const [mx, mz, s, c] of [[-16, -24, 9, PAL.mountain], [-2, -28, 12, PAL.mountainFar], [12, -25, 10, PAL.mountain], [24, -29, 13, PAL.mountainFar]])
+    // the view out the windows — worth the polygons now that you can see it
+    for (const [mx, mz, s, c] of [[-16, -24, 9, PAL.mountain], [-2, -28, 12, PAL.mountainFar], [12, -25, 10, PAL.mountain], [24, -29, 13, PAL.mountainFar], [-27, -26, 11, PAL.mountainFar], [4, -22, 7, PAL.mountain]])
       m.add(GEO.cone, c, mx, s * 0.32, mz, s, s * 0.8, s);
-    for (const [px, pz] of [[-14, -12], [15, -13], [19, -11]]) {
-      m.add(GEO.cyl, PAL.woodDark, px, 0.7, pz, 0.18, 1.4, 0.18);
-      m.add(GEO.cone, 0x5c7a52, px, 2.1, pz, 1.5, 2.6, 1.5);
+    m.add(GEO.box, 0x9aae86, 0, -0.3, -14, 60, 0.4, 16);                    // meadow beyond the lot
+    m.add(GEO.box, 0x8d8f8a, 0, -0.16, -9.4, 40, 0.3, 4.6);                 // gravel lot
+    for (let i = 0; i < 9; i++) {
+      const px = -13 + i * 3.4 + (i % 2) * 1.1, pz = -12.5 - (i % 3) * 2.6, s = 0.8 + (i % 4) * 0.22;
+      m.add(GEO.cyl, PAL.woodDark, px, 0.7 * s, pz, 0.2, 1.5 * s, 0.2);
+      m.add(GEO.cone, i % 2 ? 0x4f6f46 : 0x5c7a52, px, 2.2 * s, pz, 1.5 * s, 2.8 * s, 1.5 * s);
     }
-    const room = m.build();
-    this.scene.add(room);
+    m.add(GEO.box, 0x9a4a32, -6.5, 0.55, -9.6, 1.9, 0.9, 4.2);              // a truck in the lot
+    m.add(GEO.box, 0x8a3f28, -6.5, 1.25, -10.4, 1.7, 0.7, 1.7);
+    const room = m.build({ r: 0.92, cast: true });
+    // ⚠️ metalness this high with only a small procedural env renders BLACK —
+    // a metal's colour comes entirely from what it reflects. Half-metal plus a
+    // boosted env intensity keeps the steel reading as steel.
+    const metal = mt.build({ r: 0.34, m: 0.45, cast: true });
+    metal.material.envMapIntensity = 1.6;
+    const glow = gl.build({ r: 0.4, e: 1.9, recv: false });
+    this.scene.add(room, metal, glow);
+    // glass: pie dome + the door's screen — transparent, so it draws last
+    const glass = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, roughness: 0.06, metalness: 0, transmission: 0 });
+    const dome = mesh(GEO.sph, glass, 3.4, 1.1, -2.6, 0.86, 0.72, 0.86);
+    dome.renderOrder = 6;
+    this.scene.add(dome);
     // dynamic bits
     this.signPlate = mesh(GEO.box, M(0xc44536), LAYOUT.sign.x, 1.35, LAYOUT.sign.z + 0.2, 0.85, 0.5, 0.08);
     const signPost = mesh(GEO.cyl, M(PAL.woodDark), LAYOUT.sign.x, 0.8, LAYOUT.sign.z + 0.2, 0.08, 1.6, 0.08);
     this.scene.add(this.signPlate, signPost);
-    this.glowGriddle = mesh(GEO.box, M(PAL.hazard, { e: 0.9 }), -8, 1.07, -6.1, 2.3, 0.02, 0.7); this.glowGriddle.visible = false;
-    this.glowPan = mesh(GEO.box, M(PAL.hazard, { e: 0.9 }), -5.5, 1.09, -6.1, 1.0, 0.02, 0.7); this.glowPan.visible = false;
+    const hotMat = () => new THREE.MeshStandardMaterial({ color: 0xd8481c, emissive: new THREE.Color(0xff5a26), emissiveIntensity: 0.75, roughness: 0.55, transparent: true, opacity: 0.75 });
+    this.glowGriddle = mesh(GEO.box, hotMat(), -8, 1.07, -6.1, 2.3, 0.02, 0.7); this.glowGriddle.visible = false;
+    this.glowPan = mesh(GEO.box, hotMat(), -5.5, 1.09, -6.1, 1.0, 0.02, 0.7); this.glowPan.visible = false;
     this.scene.add(this.glowGriddle, this.glowPan);
-    // window sky shine
-    for (const wx of [-9, -4, 1]) this.scene.add(mesh(GEO.box, M(0xffe6b8, { e: 0.55 }), wx, 1.5, -6.96, 2.2, 1.0, 0.03));
+    // glare haze IN the opening — thin and translucent, so it blooms without
+    // hiding the mountains behind it
+    this.windowGlow = [];
+    for (const wx of [-9, -4, 1]) {
+      const gm = new THREE.MeshStandardMaterial({ color: 0xfff0d0, emissive: new THREE.Color(0xfff0d0), emissiveIntensity: 1.7, transparent: true, opacity: 0.13, depthWrite: false });
+      const g2 = mesh(GEO.box, gm, wx, 1.72, -7.1, 2.6, 1.5, 0.02);
+      g2.renderOrder = 5;
+      this.windowGlow.push(g2); this.scene.add(g2);
+    }
     this.plateStack = mesh(GEO.cyl, M(PAL.white), LAYOUT.shelf.x, 1.4, LAYOUT.shelf.z - 0.5, 0.62, 0.5, 0.62);
     this.dirtyStack = mesh(GEO.cyl, M(0xb8a27e), LAYOUT.sink.x - 0.35, 1.1, LAYOUT.sink.z - 0.3, 0.5, 0.3, 0.5);
     this.extMesh = this.buildItem({ k: 'ext' }); this.extMesh.position.set(LAYOUT.extHook.x, 1.35, -6.8);
@@ -337,10 +558,23 @@ export class World {
       this.scene.add(fan); this.fans.push(fan);
     }
     // golden shafts from the windows + dust motes
-    const shaftMat = new THREE.MeshBasicMaterial({ color: 0xffdf9e, transparent: true, opacity: 0.075, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    // sun shafts: a hard-edged additive quad reads as a rendering artifact, so
+    // fade the edges out in the texture and keep the opacity very low
+    const shCv = document.createElement('canvas'); shCv.width = 64; shCv.height = 64;
+    const sx2 = shCv.getContext('2d');
+    const sgr = sx2.createLinearGradient(0, 0, 0, 64);
+    sgr.addColorStop(0, 'rgba(255,232,180,0.9)'); sgr.addColorStop(1, 'rgba(255,232,180,0)');
+    sx2.fillStyle = sgr; sx2.fillRect(0, 0, 64, 64);
+    sx2.globalCompositeOperation = 'destination-in';
+    const sgr2 = sx2.createLinearGradient(0, 0, 64, 0);
+    sgr2.addColorStop(0, 'rgba(0,0,0,0)'); sgr2.addColorStop(0.5, 'rgba(0,0,0,1)'); sgr2.addColorStop(1, 'rgba(0,0,0,0)');
+    sx2.fillStyle = sgr2; sx2.fillRect(0, 0, 64, 64);
+    const shTex = new THREE.CanvasTexture(shCv);
+    const shaftMat = new THREE.MeshBasicMaterial({ map: shTex, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     for (const wx of [-9, -4, 1]) {
-      const sh = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 3.4), shaftMat);
-      sh.position.set(wx, 1.45, -5.45); sh.rotation.x = -1.12;
+      const sh = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 3.6), shaftMat);
+      sh.position.set(wx, 1.4, -5.4); sh.rotation.x = -1.12;
+      sh.renderOrder = 4;
       this.scene.add(sh);
     }
     const mN = 60, mPos = new Float32Array(mN * 3);
@@ -467,6 +701,7 @@ export class World {
     head.add(mesh(GEO.sph, M(PAL.skin[color % 4]), 0, 0, 0, 0.62, 0.56, 0.6));
     head.add(mesh(GEO.cyl, M(PAL.white), 0, 0.22, 0, 0.5, 0.22, 0.5));
     head.add(mesh(GEO.box, M(PAL.white), 0, 0.16, 0.24, 0.46, 0.1, 0.2));
+    face(head, { z: 0.27, w: 0.09, mouth: 0.14, brow: 0x5a4030 });
     head.position.y = 1.06; g.add(head);
     const armL = this.arm(PAL.white), armR = this.arm(PAL.white);
     armL.position.set(-0.36, 0.82, 0); armR.position.set(0.36, 0.82, 0);
@@ -479,7 +714,7 @@ export class World {
     const carry = new THREE.Group(); carry.position.set(0, 0.78, 0.5); g.add(carry);
     g.add(blob(0.42));
     g.userData = { head, armL, armR, legL, legR, carry, ph: Math.random() * 6.28 };
-    return g;
+    return castAll(g);
   }
   arm(color) { const a = new THREE.Group(); a.add(mesh(GEO.box, M(color), 0, -0.16, 0, 0.13, 0.34, 0.13)); return a; }
   buildCustomer(ty, id) {
@@ -498,7 +733,11 @@ export class World {
     const body = m.build(); g.add(body);
     const head = new THREE.Group();
     head.add(mesh(GEO.sph, M(skin), 0, 0, 0, 0.56, 0.52, 0.54));
-    if (ty === 'flock') { head.add(mesh(GEO.box, M(0x22222a), 0, 0.03, 0.22, 0.42, 0.1, 0.12)); head.add(mesh(GEO.sph, M(0xe8d29a), 0, 0.24, 0, 0.5, 0.28, 0.46)); }
+    if (ty !== 'flock' && ty !== 'squatter') face(head, { z: 0.24, w: 0.085, mouth: ty === 'dale' ? 0 : 0.12, brow: ty === 'kale' ? 0x4a3a2c : 0x5a4030 });
+    if (ty === 'flock') {
+      head.add(mesh(GEO.box, M(0x3a3f4a, { r: 0.25, m: 0.3 }), 0, 0.02, 0.26, 0.34, 0.09, 0.06)); // shades hug the face
+      head.add(mesh(GEO.sph, M(0xe8d29a), 0, 0.24, 0, 0.5, 0.28, 0.46));
+    }
     if (ty === 'squatter') { head.add(mesh(GEO.box, M(PAL.gray), 0, 0.14, -0.05, 0.6, 0.4, 0.55)); head.add(mesh(GEO.box, M(PAL.white), -0.24, -0.02, 0.14, 0.06, 0.12, 0.06)); head.add(mesh(GEO.box, M(PAL.white), 0.24, -0.02, 0.14, 0.06, 0.12, 0.06)); }
     if (ty === 'dale') { head.add(mesh(GEO.cyl, M(PAL.hatBrown), 0, 0.26, 0, 0.44, 0.24, 0.44)); head.add(mesh(GEO.cyl, M(PAL.hatBrown), 0, 0.16, 0, 0.78, 0.05, 0.78)); head.add(mesh(GEO.box, M(0xd8d2c8), 0, -0.08, 0.24, 0.3, 0.1, 0.08)); }
     if (ty === 'zillow' && id % 2 === 0) headExtra = 'point';
@@ -517,8 +756,12 @@ export class World {
     const armL = this.arm(bodyC), armR = this.arm(bodyC);
     armL.position.set(-0.34, 0.78, 0); armR.position.set(0.34, 0.78, 0);
     if (headExtra === 'point') armR.rotation.x = -1.35;
-    if (ty === 'squatter') { const lap = mesh(GEO.box, M(0xd0d4d8), 0, 0.62, 0.34, 0.42, 0.05, 0.3); const scr = mesh(GEO.box, M(0x3a4a5a, { e: 0.5 }), 0, 0.75, 0.46, 0.42, 0.26, 0.03); scr.rotation.x = -0.5; g.add(lap, scr); }
-    if (ty === 'flock') { const ph = mesh(GEO.box, M(0x22222a), 0.4, 0.85, 0.2, 0.08, 0.22, 0.05); ph.rotation.z = -0.3; g.add(ph); }
+    if (ty === 'squatter') { const lap = mesh(GEO.box, M(0xd0d4d8, { r: 0.4, m: 0.3 }), 0, 0.62, 0.34, 0.42, 0.05, 0.3); const scr = mesh(GEO.box, M(0x9fd8ff, { e: 0.9 }), 0, 0.75, 0.46, 0.42, 0.26, 0.03); scr.rotation.x = -0.5; g.add(lap, scr); }
+    if (ty === 'flock') {
+      const ph = mesh(GEO.box, M(0x4a5060, { r: 0.3, m: 0.4 }), 0.4, 0.85, 0.2, 0.09, 0.2, 0.04);
+      const sc = mesh(GEO.box, M(0xbfe8ff, { e: 0.8 }), 0.4, 0.85, 0.23, 0.075, 0.17, 0.01);
+      ph.rotation.z = -0.3; sc.rotation.z = -0.3; g.add(ph, sc);
+    }
     if (ty === 'sequoia') {
       g.add(mesh(GEO.box, M(0xf2ece2), 0, 0.52, 0.16, 0.52, 0.5, 0.16)); // the white puffer vest
       armR.rotation.x = -2.5; // phone always up, always filming
@@ -528,7 +771,7 @@ export class World {
     }
     g.add(armL, armR, blob(0.4));
     g.userData = { head, armL, armR, hat, ph: Math.random() * 6.28, ty };
-    return g;
+    return castAll(g);
   }
 
   // ---- items ---------------------------------------------------------------------
@@ -578,8 +821,8 @@ export class World {
         const slot = v.g.userData.carry;
         while (slot.children.length) slot.remove(slot.children[0]);
         if (p.h) {
-          slot.add(this.buildItem(p.h));
-          (p.xs || []).forEach((m, ix) => { const im = this.buildItem(m); im.position.y = 0.18 * (ix + 1); im.rotation.y = (ix + 1) * 0.4; slot.add(im); });
+          slot.add(stripBlob(this.buildItem(p.h)));
+          (p.xs || []).forEach((m, ix) => { const im = stripBlob(this.buildItem(m)); im.position.y = 0.18 * (ix + 1); im.rotation.y = (ix + 1) * 0.4; slot.add(im); });
         }
       }
       v.g.visible = !p.off;
@@ -954,18 +1197,45 @@ export class World {
       this.fireLight.position.set(f0.x, 1.5, f0.z);
       this.fireLight.intensity = 1.1 + Math.random() * 0.7;
     } else this.fireLight.intensity = 0;
-    // camera
-    let fx = 0, fz = 1.2;
-    let target = null;
-    if (this.you >= 0 && this.pl.has(this.you)) target = this.pl.get(this.you).g.position;
-    if (target) {
-      this.camTgt.lerp(new THREE.Vector3(target.x * 0.9, 0, target.z * 0.88 + 0.3), Math.min(1, dt * 4.5));
-      this.camPos.lerp(new THREE.Vector3(this.camTgt.x, 8.4, this.camTgt.z + 6.4), Math.min(1, dt * 4.5));
+    // ---- camera ---------------------------------------------------------------
+    const meV = this.you >= 0 ? this.pl.get(this.you) : null;
+    const meD = meV && meV.d;
+    const firstPerson = this.fp && meV && meD;
+    if (firstPerson) {
+      const px = meV.g.position.x, pz = meV.g.position.z;
+      const moving = meD.mv || (myPred && myPred.mv);
+      this.bob += dt * (moving ? (this.sprinting ? 13.5 : 10) : 1.6);
+      const amt = moving ? 1 : 0.12;
+      let eye = 1.52 + Math.sin(this.bob * 2) * 0.032 * amt;
+      let roll = Math.sin(this.bob) * 0.014 * amt;
+      let pitch = this.look.pitch;
+      if (meD.cb >= 0) { eye = 1.18; roll = 1.2; }                       // slung over a shoulder
+      else if (meD.ar) { this.airRoll = (this.airRoll || 0) + dt * 7.5; eye = 0.75 + (meD.y || 0); roll = this.airRoll; }
+      else if (meD.sn) { eye = 0.6; roll = 0.55; pitch = Math.min(pitch, -0.2); } // face down on the tile
+      else this.airRoll = 0;
+      this.camera.position.set(px, eye, pz);
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.set(pitch, this.look.yaw, roll);
+      const wantFov = this.fovBase + (this.sprinting && moving ? 6 : 0);
+      if (Math.abs(this.camera.fov - wantFov) > 0.05) { this.camera.fov += (wantFov - this.camera.fov) * Math.min(1, dt * 6); this.camera.updateProjectionMatrix(); }
+      meV.g.visible = false;                                             // no floating torso
+      this.hands.visible = !(meD.ar || meD.cb >= 0);
+      this.setHandItem(meD.h, meD.xs);
     } else {
-      this.camTgt.lerp(new THREE.Vector3(0, 0, 0.5), dt);
-      this.camPos.lerp(new THREE.Vector3(0, 15.5, 12), dt);
+      this.hands.visible = false;
+      if (meV) meV.g.visible = !(meD && meD.off);
+      let target = meV ? meV.g.position : null;
+      if (target) {
+        this.camTgt.lerp(new THREE.Vector3(target.x * 0.9, 0, target.z * 0.88 + 0.3), Math.min(1, dt * 4.5));
+        this.camPos.lerp(new THREE.Vector3(this.camTgt.x, 8.4, this.camTgt.z + 6.4), Math.min(1, dt * 4.5));
+      } else {
+        this.camTgt.lerp(new THREE.Vector3(0, 0, 0.5), dt);
+        this.camPos.lerp(new THREE.Vector3(0, 15.5, 12), dt);
+      }
+      this.camera.position.copy(this.camPos);
+      this.camera.rotation.set(0, 0, 0);
+      this.camera.lookAt(this.camTgt.x, 0.4, this.camTgt.z);
     }
-    this.camera.position.copy(this.camPos);
     if (this.shakeT > 0) {
       this.shakeT -= dt;
       const k = Math.max(0, this.shakeT / 0.45) * (this.shakeA || 0);
@@ -974,12 +1244,36 @@ export class World {
       this.camera.position.z += (Math.random() - 0.5) * k;
       if (this.shakeT <= 0) this.shakeA = 0;
     }
-    this.camera.lookAt(this.camTgt.x, 0.4, this.camTgt.z);
+    // the ceiling only exists for the first-person eye; from above it's a lid
+    if (this.ceiling) this.ceiling.visible = firstPerson;
+    // keep the shadow frustum centred on the action so texels stay dense
+    this.sun.position.set(this.camera.position.x - 9, 13, this.camera.position.z + 6);
+    this.sun.target.position.set(this.camera.position.x, 0, this.camera.position.z);
+    this.sun.target.updateMatrixWorld();
     if (this.signFlipT > 0) {
       this.signFlipT -= dt;
       this.signPlate.rotation.x = Math.max(0, this.signFlipT) / 0.7 * Math.PI * 2;
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.post) this.post.render(t); else this.renderer.render(this.scene, this.camera);
   }
 }
 function shortest(a, b) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
+// eyes + brow: cheap, and in first person you are two feet from these faces
+function face(head, opt = {}) {
+  const eyeW = opt.w ?? 0.1, ey = opt.y ?? 0.02, ez = opt.z ?? 0.46;
+  for (const s of [-1, 1]) {
+    head.add(mesh(GEO.sph, M(PAL.white, { r: 0.4 }), s * 0.17, ey, ez, eyeW, eyeW * 1.15, eyeW * 0.7));
+    head.add(mesh(GEO.sph, M(0x22222a, { r: 0.35 }), s * 0.17 + (opt.gaze || 0), ey, ez + 0.04, eyeW * 0.55, eyeW * 0.62, eyeW * 0.5));
+    if (opt.brow) head.add(mesh(GEO.box, M(opt.brow), s * 0.17, ey + 0.13, ez, 0.14, 0.035, 0.05));
+  }
+  if (opt.mouth) head.add(mesh(GEO.box, M(0x8a4a44, { r: 0.5 }), 0, -0.17, ez - 0.02, opt.mouth, 0.035, 0.04));
+}
+function castAll(g) { g.traverse(o => { if (o.isMesh && o.material !== shadowMat) o.castShadow = true; }); return g; }
+// ⚠️ every item ships with a ground blob shadow; in the first-person hands rig
+// that disc sits inches from the lens and reads as a black slab across frame
+function stripBlob(g) {
+  const kill = [];
+  g.traverse(o => { if (o.isMesh && o.material === shadowMat) kill.push(o); });
+  for (const o of kill) o.parent.remove(o);
+  return g;
+}

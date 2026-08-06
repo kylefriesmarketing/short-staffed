@@ -61,6 +61,8 @@ function doJoin() {
   localStorage.setItem('ss-name', name);
   $('joinrow').style.display = 'none';
   world = new World($('c'));
+  world.fp = fpMode; world.look = look;
+  setTimeout(lockPointer, 60);
   if (LOCAL) {
     localSim = new Sim((Date.now() / 1000 | 0) % 100000);
     mySeat = localSim.join('me', name, myColor);
@@ -97,6 +99,26 @@ function doJoin() {
   }
 }
 
+// ---- first-person look ---------------------------------------------------------------
+const look = { yaw: 0, pitch: 0 };
+const MAXP = 1.25, SENS = 0.0023;
+let fpMode = true, locked = false;
+function lockPointer() {
+  const c = $('c');
+  if (fpMode && c.requestPointerLock && !locked) { try { c.requestPointerLock(); } catch {} }
+}
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === $('c');
+  $('lockhint').style.display = (fpMode && !locked && joined && lastSnap && lastSnap.ph !== 'over') ? 'flex' : 'none';
+});
+addEventListener('mousemove', e => {
+  if (!locked) return;
+  look.yaw -= e.movementX * SENS;
+  look.pitch -= e.movementY * SENS;
+  look.pitch = Math.max(-MAXP, Math.min(MAXP, look.pitch));
+});
+$('c').addEventListener('click', () => { audioInit(); lockPointer(); });
+
 // ---- input: keyboard ---------------------------------------------------------------
 const held = new Set();
 let sprintKey = false;
@@ -109,6 +131,13 @@ addEventListener('keydown', e => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { sprintKey = true; e.preventDefault(); }
   if (e.code === 'KeyE' || e.code === 'Enter') { input.a++; input.ah = true; e.preventDefault(); }
   if (e.code === 'Space') { input.th++; e.preventDefault(); }
+  if (e.code === 'KeyV') {
+    fpMode = !fpMode;
+    if (world) world.fp = fpMode;
+    if (!fpMode && document.exitPointerLock) document.exitPointerLock();
+    else lockPointer();
+    $('lockhint').style.display = 'none';
+  }
 });
 addEventListener('keyup', e => {
   if (KB[e.code]) held.delete(KB[e.code]);
@@ -119,6 +148,7 @@ addEventListener('blur', () => { held.clear(); input.ah = false; sprintKey = fal
 
 // ---- input: touch -------------------------------------------------------------------
 const touch = { on: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+const lookT = { on: false, id: null, lx: 0, ly: 0 };
 const stickEl = $('stick'), nubEl = $('nub');
 addEventListener('pointerdown', e => {
   audioInit();
@@ -127,6 +157,8 @@ addEventListener('pointerdown', e => {
     touch.on = true; touch.id = e.pointerId; touch.ox = e.clientX; touch.oy = e.clientY; touch.dx = touch.dy = 0;
     stickEl.style.display = 'block';
     stickEl.style.left = (e.clientX - 55) + 'px'; stickEl.style.top = (e.clientY - 55) + 'px';
+  } else if (e.clientX >= innerWidth * 0.5) {
+    lookT.on = true; lookT.id = e.pointerId; lookT.lx = e.clientX; lookT.ly = e.clientY;
   }
 });
 addEventListener('pointermove', e => {
@@ -134,9 +166,16 @@ addEventListener('pointermove', e => {
     touch.dx = (e.clientX - touch.ox) / 45; touch.dy = (e.clientY - touch.oy) / 45;
     const l = Math.hypot(touch.dx, touch.dy) || 1, cl = Math.min(1, l);
     nubEl.style.transform = `translate(${touch.dx / l * cl * 34}px,${touch.dy / l * cl * 34}px)`;
+  } else if (lookT.on && e.pointerId === lookT.id) {
+    look.yaw -= (e.clientX - lookT.lx) * 0.005;
+    look.pitch = Math.max(-MAXP, Math.min(MAXP, look.pitch - (e.clientY - lookT.ly) * 0.004));
+    lookT.lx = e.clientX; lookT.ly = e.clientY;
   }
 });
-function endTouch(e) { if (touch.on && e.pointerId === touch.id) { touch.on = false; touch.dx = touch.dy = 0; stickEl.style.display = 'none'; nubEl.style.transform = ''; } }
+function endTouch(e) {
+  if (touch.on && e.pointerId === touch.id) { touch.on = false; touch.dx = touch.dy = 0; stickEl.style.display = 'none'; nubEl.style.transform = ''; }
+  if (lookT.on && e.pointerId === lookT.id) lookT.on = false;
+}
 addEventListener('pointerup', endTouch); addEventListener('pointercancel', endTouch);
 $('btnA').addEventListener('pointerdown', e => { e.preventDefault(); audioInit(); input.a++; input.ah = true; }, { passive: false });
 $('btnA').addEventListener('pointerup', () => input.ah = false);
@@ -152,6 +191,9 @@ function pollPad() {
     const ax = Math.abs(gp.axes[0]) > 0.25 ? gp.axes[0] : 0;
     const ay = Math.abs(gp.axes[1]) > 0.25 ? gp.axes[1] : 0;
     if (ax || ay) { padVec.x = ax; padVec.z = ay; } else { padVec.x = 0; padVec.z = 0; }
+    const rx = Math.abs(gp.axes[2] || 0) > 0.2 ? gp.axes[2] : 0;
+    const ry = Math.abs(gp.axes[3] || 0) > 0.2 ? gp.axes[3] : 0;
+    if (rx || ry) { look.yaw -= rx * 0.045; look.pitch = Math.max(-MAXP, Math.min(MAXP, look.pitch - ry * 0.035)); }
     const a = gp.buttons[0]?.pressed, b = (gp.buttons[2]?.pressed || gp.buttons[7]?.pressed);
     padSprint = !!gp.buttons[1]?.pressed;
     if (a && !pad.a) { input.a++; }
@@ -449,16 +491,29 @@ function updateHighlight() {
 let last = performance.now(), acc = 0, fps = 0, frames = 0, fpsAt = last;
 const STEP = 1 / 60;
 function computeInput() {
-  let x = 0, z = 0;
-  if (held.has('up')) z -= 1; if (held.has('down')) z += 1;
-  if (held.has('left')) x -= 1; if (held.has('right')) x += 1;
+  // stick space first: +fwd is "away from the camera", +rt is "camera right"
+  let fwd = 0, rt = 0;
+  if (held.has('up')) fwd += 1; if (held.has('down')) fwd -= 1;
+  if (held.has('right')) rt += 1; if (held.has('left')) rt -= 1;
   let touchMag = 0;
-  if (touch.on) { x += touch.dx; z += touch.dy; touchMag = Math.hypot(touch.dx, touch.dy); }
-  x += padVec.x; z += padVec.z;
+  if (touch.on) { rt += touch.dx; fwd -= touch.dy; touchMag = Math.hypot(touch.dx, touch.dy); }
+  rt += padVec.x; fwd -= padVec.z;
+  let x, z;
+  if (fpMode) {
+    // camera-relative: three's camera looks down -Z at yaw 0
+    const sy = Math.sin(look.yaw), cy = Math.cos(look.yaw);
+    x = fwd * -sy + rt * cy;
+    z = fwd * -cy + rt * -sy;
+    input.fx = -sy; input.fz = -cy;          // you face where you look
+  } else {
+    x = rt; z = -fwd;
+    const l0 = Math.hypot(x, z);
+    if (l0 > 0.15) { input.fx = x / l0; input.fz = z / l0; }
+  }
   const l = Math.hypot(x, z); if (l > 1) { x /= l; z /= l; }
   input.x = x; input.z = z;
   input.sp = sprintKey || padSprint || touchMag > 1.35;
-  if (l > 0.15) { input.fx = x / (l || 1); input.fz = z / (l || 1); }
+  if (world) { world.look = look; world.sprinting = input.sp && l > 0.1; }
   if (net) { net.input.x = input.x; net.input.z = input.z; net.input.fx = input.fx; net.input.fz = input.fz; net.input.a = input.a; net.input.th = input.th; net.input.ah = input.ah; net.input.sp = input.sp; }
 }
 function stepLocal(dt) {
@@ -485,6 +540,11 @@ function frame(now) {
     if (voice) { voice.updateSpatial(pred.has ? pred : { x: 0, z: 0 }, lastSnap); world.speakSet = voice.speaking; }
     world.render(dt, pred.has ? pred : null);
     ensureLabels(); updateLabels();
+    const playing = lastSnap && ['shift', 'close', 'count', 'supply', 'lobby'].includes(lastSnap.ph);
+    $('cross').classList.toggle('on', !!(fpMode && joined && mySeat >= 0 && playing));
+    const wantHint = fpMode && joined && mySeat >= 0 && !locked && playing && !('ontouchstart' in window);
+    const hintEl = $('lockhint');
+    if ((hintEl.style.display === 'flex') !== wantHint) hintEl.style.display = wantHint ? 'flex' : 'none';
   }
   if (DEV && (frames++, now - fpsAt >= 500)) {
     fps = Math.round(frames * 1000 / (now - fpsAt)); frames = 0; fpsAt = now;

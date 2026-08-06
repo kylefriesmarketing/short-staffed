@@ -120,6 +120,11 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   #e-blame .brow span { font-weight: 900; letter-spacing: .04em; }
   #e-blame .brow b { font-size: 15px; }
   #e-blame .brow i { opacity: .6; font-size: 11.5px; margin-left: auto; font-style: normal; }
+  #cross { position: fixed; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: rgba(255,246,232,.85); box-shadow: 0 0 0 2px rgba(58,44,28,.45), 0 0 8px rgba(0,0,0,.4); z-index: 26; pointer-events: none; display: none; }
+  #cross.on { display: block; }
+  #lockhint { position: fixed; inset: 0; z-index: 34; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  #lockhint div { background: rgba(58,44,28,.86); color: var(--white); padding: 14px 26px; border-radius: 14px; font-weight: 900; letter-spacing: .12em; font-size: 15px; text-align: center; border: 2px solid rgba(255,246,232,.2); }
+  #lockhint span { display: block; font-weight: 400; letter-spacing: .04em; font-size: 12px; opacity: .8; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -136,6 +141,8 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
 </div>
 <div id="firevig"></div>
 <div id="bite">❗</div>
+<div id="cross"></div>
+<div id="lockhint" style="display:none"><div>CLICK TO LOOK AROUND<span>mouse aims · WASD moves · V for overhead view</span></div></div>
 <div id="rail"></div>
 <div id="toasts"></div>
 <div id="count"></div>
