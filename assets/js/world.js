@@ -891,6 +891,7 @@ export class World {
       v.d = p; v.tx = p.x; v.tz = p.z;
       const ck = (p.h ? this.itemKey(p.h) : (p.dc ? 'CU' : '')) + '|' + (p.xs || []).map(m => this.itemKey(m)).join(',');
       if (ck !== v.carryKey) {
+        if (v.carryKey !== null) v.g.userData.reachT = 0.32;   // grabbing/placing gets a reach
         v.carryKey = ck;
         const slot = v.g.userData.carry;
         while (slot.children.length) slot.remove(slot.children[0]);
@@ -1119,16 +1120,32 @@ export class World {
       u.micS.visible = !!(this.speakSet && this.speakSet.has(seat));
       const inert = d.ar || d.cb >= 0;
       const carrying = !!d.h || !!d.dc;
-      if (!inert) {
-        const armT = carrying ? -1.5 : d.sp ? -1.1 : moving ? Math.sin(u.ph) * 0.7 : 0.08;
-        const armT2 = carrying ? -1.5 : d.sp ? -1.1 : moving ? -Math.sin(u.ph) * 0.7 : -0.08;
+      alive(u, g, dt, lerpK, null);
+      if (d.ar) {
+        // thrown: arms and legs flail — a rigid spinning body isn't funny
+        const f = t * 17 + u.ph;
+        u.armL.rotation.x = Math.sin(f) * 1.5 - 0.6; u.armR.rotation.x = Math.sin(f + 2.1) * 1.5 - 0.6;
+        u.armL.rotation.z = 0.5; u.armR.rotation.z = -0.5;
+        setLegs(u, Math.sin(f + 1) * 0.9, Math.sin(f + 3.4) * 0.9, 1, true);
+      } else if (d.cb >= 0) {
+        const f = t * 13 + u.ph;
+        u.armL.rotation.x = Math.sin(f) * 1.2; u.armR.rotation.x = -Math.sin(f) * 1.2;
+        setLegs(u, Math.sin(f + 1.7) * 0.7, -Math.sin(f + 1.7) * 0.7, 1, true);
+      } else {
+        u.armL.rotation.z *= 0.85; u.armR.rotation.z *= 0.85;
+        // busy = a working pose: both arms out, pumping (pour, pick, scrub, sweep)
+        const work = d.b ? -1.25 + Math.sin(t * 9) * 0.22 : null;
+        const reach = u.reachT > 0 ? -1.75 : null;
+        const armT = work ?? reach ?? (carrying ? -1.5 : d.sp ? -1.1 : moving ? Math.sin(u.ph) * 0.7 : 0.08);
+        const armT2 = work ?? reach ?? (carrying ? -1.5 : d.sp ? -1.1 : moving ? -Math.sin(u.ph) * 0.7 : -0.08);
         u.armL.rotation.x += (armT - u.armL.rotation.x) * lerpK * 1.6;
         u.armR.rotation.x += (armT2 - u.armR.rotation.x) * lerpK * 1.6;
+        const legT = moving ? Math.sin(u.ph) * 0.8 : 0;
+        setLegs(u, legT, -legT, Math.min(1, lerpK * 1.8), moving);
       }
       u.carry.rotation.z = Math.sin(t * 12) * (d.wb || 0) * 0.5;
       u.head.rotation.z = Math.sin(u.ph * 0.5) * 0.05;
-      const legT = moving ? Math.sin(u.ph) * 0.8 : 0;
-      setLegs(u, legT, -legT, Math.min(1, lerpK * 1.8), moving);
+      if (!moving && !d.b && !inert) g.position.y += Math.sin(u.breath) * 0.008;
       const leanT = d.b ? -0.12 : moving ? -0.08 : 0;
       g.rotation.x += (leanT - g.rotation.x) * lerpK;
       if (!u.cone) {
@@ -1169,11 +1186,26 @@ export class World {
         f.vx += fx * 4; f.vz += fz * 4;
       }
     }
+    // whoever is nearest gets looked at — customers track the staff, which is
+    // most of what makes a room feel occupied rather than decorated
+    let nearestCook = null;
+    for (const [, pv] of this.pl) if (pv.d && !pv.d.off) nearestCook = nearestCook || pv.g.position;
     for (const [, v] of this.cu) {
       const g = v.g, d = v.d; if (!d) continue;
       g.position.x += (d.x - g.position.x) * lerpK;
       g.position.z += (d.z - g.position.z) * lerpK;
       const u = g.userData;
+      let lookAt = null;
+      if (['sit', 'wait', 'squat'].includes(d.st)) {
+        let best = null, bd = 7 * 7;
+        for (const [, pv] of this.pl) {
+          if (!pv.d || pv.d.off) continue;
+          const dd = d2(pv.g.position.x, pv.g.position.z, g.position.x, g.position.z);
+          if (dd < bd) { bd = dd; best = pv.g.position; }
+        }
+        lookAt = best;
+      } else if (d.st === 'eat' && v.food) lookAt = v.food.position;
+      alive(u, g, dt, lerpK, lookAt);
       if (d.st === 'drag') { g.rotation.z += (1.35 - g.rotation.z) * lerpK; g.position.y = 0.5; u.armL.rotation.x = Math.sin(t * 14) * 1.2; u.armR.rotation.x = -Math.sin(t * 14) * 1.2; }
       else if (d.st === 'air') { g.rotation.z += dt * 9; g.position.y = d.y; }
       else {
@@ -1194,7 +1226,22 @@ export class World {
           setLegs(u, seated ? -1.45 : 0, seated ? -1.45 : 0, lerpK, false, seated ? 1.45 : 0);
           if (!armFixed) { u.armL.rotation.x *= 0.9; u.armR.rotation.x *= 0.9; }
         }
-        if (d.st === 'eat') u.head.rotation.x = Math.sin(t * 6) * 0.15;
+        // per-archetype idles: the bit each one is famous for, in motion
+        if (d.st === 'eat') {
+          const bite = (Math.sin(t * 1.7 + u.ph) + 1) * 0.5;          // fork up, chew, fork down
+          u.armR.rotation.x = -0.5 - bite * 1.5;
+          u.head.rotation.x += Math.sin(t * 6) * 0.06 * bite;
+        } else if (u.ty === 'squatter') {
+          u.armL.rotation.x = -1.25 + Math.sin(t * 11) * 0.09;        // typing, forever
+          u.armR.rotation.x = -1.25 + Math.sin(t * 11 + 1.6) * 0.09;
+        } else if (u.ty === 'dale' && v.mug) {
+          const sip = Math.max(0, Math.sin(t * 0.5 + u.ph));          // coffee. black.
+          u.armR.rotation.x = -0.2 - sip * sip * 1.9;
+        } else if (u.ty === 'flock') {
+          u.armR.rotation.x = -1.9 + Math.sin(t * 2.3 + u.ph) * 0.07; // scrolling
+        } else if (u.ty === 'sequoia') {
+          u.armR.rotation.x = -2.5 + Math.sin(t * 1.1) * 0.05;        // panning the shot
+        }
       }
       if (u.hat) u.hat.rotation.z += ((d.yh ? 0.45 : 0) - u.hat.rotation.z) * lerpK; // the yee-haw tips the hat
       v.emoteT -= dt;
@@ -1343,6 +1390,7 @@ export class World {
   }
 }
 function shortest(a, b) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
+const d2 = (ax, az, bx, bz) => (ax - bx) * (ax - bx) + (az - bz) * (az - bz);
 // hip + knee in one call; snap while walking, ease into a held pose otherwise
 function setLegs(u, l, r, k, snap, knee = 0) {
   if (!u.legL) return;
@@ -1423,6 +1471,11 @@ function human(o) {
   }
   if (o.mouth !== 0) h.add(GEO.box, 0x8a4a44, 0, -0.16, 0.25, o.mouth || 0.12, 0.03, 0.04);
   head.add(h.build({ mat: charMat, cast: true }));
+  // eyelid: a skin-toned bar parked under the brow that drops over the eyes.
+  // Blinking is the cheapest "this thing is alive" cue there is.
+  const lids = mesh(GEO.box, M(skin), 0, 0.09, 0.247, 0.4, 0.13, 0.045);
+  lids.scale.y = 0.02;
+  head.add(lids);
   if (o.hat === 'paper') {                                                  // cook's folded cap
     head.add(mesh(GEO.cyl, M(PAL.white), 0, 0.3, 0, 0.5, 0.3, 0.5));
     head.add(mesh(GEO.box, M(PAL.white), 0, 0.2, 0, 0.56, 0.12, 0.5));
@@ -1465,8 +1518,40 @@ function human(o) {
   const carry = new THREE.Group(); carry.position.set(0, 1.02, 0.46); g.add(carry);
   g.add(blob(0.44));
   if (S !== 1) g.scale.setScalar(S);
-  g.userData = { head, armL, armR, legL, legR, carry, ph: Math.random() * 6.28 };
+  g.userData = {
+    head, armL, armR, legL, legR, carry, lids, body,
+    ph: Math.random() * 6.28, blinkT: 1 + Math.random() * 4, blink: 0,
+    breath: Math.random() * 6.28, reachT: 0, lookX: 0, lookY: 0,
+  };
   return g;
+}
+// per-frame aliveness shared by cooks and customers: blinking, breathing and a
+// head that actually points at whatever the character cares about
+function alive(u, g, dt, k, lookAt) {
+  u.blinkT -= dt;
+  if (u.blinkT <= 0) { u.blink = 0.16; u.blinkT = 1.8 + Math.random() * 5; }
+  if (u.blink > 0) u.blink -= dt;
+  if (u.lids) u.lids.scale.y = u.blink > 0 ? 1 : 0.02;
+  u.breath += dt * 1.15;
+  if (u.body) { const b = 1 + Math.sin(u.breath) * 0.012; u.body.scale.set(b, 1, b); }
+  let ty = 0, tx = 0;
+  if (lookAt) {
+    // yaw/pitch of the target in the character's own frame, clamped so nobody
+    // snaps their head around like an owl
+    const dx = lookAt.x - g.position.x, dz = lookAt.z - g.position.z;
+    const want = shortest(0, Math.atan2(dx, dz) - g.rotation.y);
+    // if it's behind them they give up rather than straining at the clamp forever
+    if (Math.abs(want) < 1.15) {
+      ty = Math.max(-0.85, Math.min(0.85, want));
+      const d = Math.hypot(dx, dz);
+      tx = Math.max(-0.4, Math.min(0.45, Math.atan2((lookAt.y ?? 1.5) - 1.52, Math.max(0.4, d))));
+    }
+  }
+  u.lookY += (ty - u.lookY) * Math.min(1, k * 0.5);
+  u.lookX += (tx - u.lookX) * Math.min(1, k * 0.5);
+  u.head.rotation.y = u.lookY;
+  u.head.rotation.x = u.lookX;
+  if (u.reachT > 0) u.reachT -= dt;
 }
 // ⚠️ every item ships with a ground blob shadow; in the first-person hands rig
 // that disc sits inches from the lens and reads as a black slab across frame
