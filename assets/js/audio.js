@@ -161,6 +161,12 @@ export function sfx(k, x, z) {
     case 'lastcall': tone(659, 659, 0.5, 'sine', 0.15); setTimeout(() => tone(494, 494, 0.7, 'sine', 0.13), 260); break;
     case 'count': tone(740, 740, 0.12, 'square', 0.1); break;
     case 'text': tone(1976, 2200, 0.09, 'sine', 0.1); setTimeout(() => tone(1976, 1760, 0.09, 'sine', 0.08), 90); break;
+    // the director's second channel: a low anticipatory two-note under every telegraph toast
+    case 'tg': tone(392, 392, 0.16, 'triangle', 0.11); setTimeout(() => tone(466, 466, 0.24, 'triangle', 0.1), 140); break;
+    case 'openfault': noise(0.2, 0.2, 1400, 4200); tone(2200, 1100, 0.14, 'square', 0.05); break;
+    case 'busin': noise(0.8, 0.14, 200, 900); tone(155, 110, 0.5, 'sawtooth', 0.1, x, z, 'exp'); break;
+    case 'buswarn': tone(233, 233, 0.18, 'sawtooth', 0.12); setTimeout(() => tone(233, 233, 0.18, 'sawtooth', 0.12), 240); break;
+    case 'bushonk': tone(233, 231, 0.7, 'sawtooth', 0.16); tone(294, 291, 0.7, 'sawtooth', 0.13); break;
     case 'over': [0, 4, 7, 12].forEach((s, i) => pluck(220 * Math.pow(2, s / 12), 0.2, i * 0.13)); break;
     case 'click': tone(900, 700, 0.05, 'square', 0.06); break;
     case 'supply': tone(988, 988, 0.3, 'sine', 0.14); setTimeout(() => tone(784, 784, 0.4, 'sine', 0.12), 180); break;

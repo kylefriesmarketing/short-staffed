@@ -33,6 +33,48 @@ export const C = {
   HUCK_PICKS: 3, BEAR_PROB: 0.22, BEAR_MINPICKS: 2, BEAR_SPEED: 1.4, BEAR_ROAR_R: 2.6, BEAR_SHOVE_R: 3.2, BEAR_EAT: 3,
   SYSCO_COST: 80, SYSCO_ODDS: 0.6, SYSCO_YIELD: 4,
   PREMIUM_TROUT_MULT: 1.6, HUCK_BONUS: 15, CRED_PREMIUM: 1,
+  BUS_CLOCK: 70, BUS_BONUS: 15, BUS_WARN: 12,
+};
+// ── THE DIRECTOR (ported from THE LAST LOCAL, bible §12) ────────────────────
+// The shift stops being a flat spawn curve and gains dramaturgy: named phases,
+// an intensity budget that buys pressure events, ≤2 disaster families at once,
+// every event telegraphed ~4s ahead, and a recovery valve after big hits.
+// Arrivals stay OUTSIDE the budget (the existing spawn curve is the service
+// floor): the room keeps filling while everything burns. That is the joke.
+export const DIR = {
+  phases: [
+    { id: 'warm', start: 0, end: 100 },
+    { id: 'compression', start: 100, end: 260 },
+    { id: 'break', start: 260, end: 370 },
+    { id: 'last_call', start: 370, end: 9999 },
+  ],
+  maxFam: 2,
+  budget: { warm: 20, compression: 44, break: 58, last_call: 8 },
+  regen: 0.55,
+  valve: 26,            // seconds of no NEW pressure after a cost>=20 event
+  lead: 4,              // telegraph seconds before the event bites
+  messHold: 24,         // messScore above this holds new pressure too
+  prepFault: 10,        // "something is already broken": shards at open
+  headline: {           // guaranteed beats — the budget buys EXTRA friction, never the plot
+    compression: { at: 40, pool: ['greasefire', 'flockwave'] },
+    break: { at: 24, pool: ['tourbus', 'greasefire', 'flockwave'] },
+  },
+};
+export const DIR_EV = {
+  // weighted pressure (cost > 0, budget-gated)
+  flockwave: { fam: 'tourist', w: 1.1, cost: 16, cd: 90, max: 3, phases: ['compression', 'break'], tg: 'phones_up' },
+  greasefire: { fam: 'failure', w: 1.2, cost: 26, cd: 150, max: 2, phases: ['compression', 'break'], tg: 'griddle_hiss' },
+  tourbus: { fam: 'tourist', w: 1.0, cost: 30, cd: 999, max: 1, phases: ['break'], tg: 'air_brakes' },
+  // authored opening fault
+  shardsopen: { fam: 'failure', cost: 0, cd: 999, max: 1, authored: true, tg: 'crash_back' },
+  // fixed-time set pieces (the old AT clocks, now telegraphed + family-fair).
+  // Social pressure holds a family slot; regulars/opportunities are service.
+  squatter: { fam: 'social', ats: 'SQUAT_AT', cost: 0, cd: 30, max: 2, tg: 'airpods' },
+  zillow: { fam: 'social', at: 'ZILLOW_AT', cost: 0, cd: 999, max: 1, tg: 'sedan_parks' },
+  sequoia: { fam: 'social', at: 'SEQ_AT', cost: 0, cd: 999, max: 1, day: 2, tg: 'ringlight' },
+  dale: { service: true, at: 'DALE_AT', cd: 20, tg: 'spurs_jingle' },
+  larper: { service: true, at: 'LARPER_AT', cd: 999, max: 1, tg: 'yodel_radio' },
+  kale: { service: true, at: 'KALE_AT', cd: 999, max: 1, tg: 'kale_text' },
 };
 // tomorrow's Specials — the player-drafted difficulty (3 of these 4 are offered each prep)
 export const SPECIALS = {
@@ -136,6 +178,7 @@ export class Sim {
     this.upgrades = [];
     this._larpDone = 0; this._kaleDone = 0; this._seqDone = 0; this._contagionNext = false;
     this.pstats = {};
+    this.drcInit();
   }
   rentTarget() { return Math.round(C.RENT[this.crew()] * Math.pow(C.RENT_SCALE + (this.gent / 100) * C.GENT_RENTMULT, this.day - 1)); }
   bumpCred(n) { this.cred = Math.max(0, Math.min(100, this.cred + n)); }
@@ -247,6 +290,8 @@ export class Sim {
   }
 
   shiftDirector(dt) {
+    // service floor: the baseline spawn curve. NOT budget-gated — the room
+    // keeps filling while everything burns (that is the joke).
     const min = Math.min(7, Math.floor(this.t / 60));
     const rate = C.SPAWN_RATE[min] * C.CREW_MULT[this.crew()] / 60;
     this.spawnAcc += rate * dt;
@@ -254,14 +299,167 @@ export class Sim {
     const cap = C.PARTY_CAP_BASE + C.PARTY_CAP_PER * this.crew();
     if (this.spawnAcc >= 1 && parties.size < cap) { this.spawnAcc -= 1; this.spawnParty(); }
     if (this.flockQ > 0) { this.flockQ--; this.spawnFlock(true); }
-    for (const at of C.SQUAT_AT) if (this.t >= at && !this.squatDone.includes(at)) { this.squatDone.push(at); this.spawnSquatter(); }
-    if (this.t >= C.ZILLOW_AT && !this.zillowDone) { this.zillowDone = true; this.spawnZillow(); }
-    if (this.t >= C.DALE_AT && !this.dale && (this._daleGone == null || this.t - this._daleGone > 120)) this.spawnDale();
-    if (this.t >= C.LARPER_AT && !this._larpDone) { this._larpDone = 1; this.spawnLarper(); }
-    if (this.t >= C.KALE_AT && !this._kaleDone) { this._kaleDone = 1; this.spawnKale(); }
-    if (this.day >= 2 && this.t >= C.SEQ_AT && !this._seqDone) { this._seqDone = 1; this.spawnSequoia(); }
     if (!this._tx1 && this.t >= 120) { this._tx1 = 1; this.push({ k: 'text', s: 'll_up' }); }
     if (!this._tx2 && this.t >= 360) { this._tx2 = 1; this.push({ k: 'text', s: 'll_grateful' }); }
+    // the tour bus departure clock runs on real dt (the honk must not quantize)
+    if (this.busT > 0) {
+      this.busT -= dt;
+      if (!this._busWarn && this.busT <= C.BUS_WARN) { this._busWarn = 1; this.push({ k: 'buswarn' }); }
+      if (this.busT <= 0) this.busHonk();
+    }
+    // director core at 1 Hz
+    this.drc.t1 -= dt;
+    if (this.drc.t1 <= 0) { this.drc.t1 += 1; this.drcTick(); }
+  }
+
+  // ── THE DIRECTOR (ported from THE LAST LOCAL, bible §12) ──────────────────
+  drcInit() {
+    this.drc = {
+      t1: 1, budget: 0, valveT: 0, used: {}, cd: {}, pending: [],
+      famAt: {}, hlDone: {}, prepDone: false, log: [],
+    };
+    this.busT = 0; this._busWarn = 0; this.squatDone = this.squatDone || [];
+  }
+  phaseId() { for (const p of DIR.phases) if (this.t >= p.start && this.t < p.end) return p.id; return 'last_call'; }
+  messScore() {
+    let m = 0;
+    m += this.fires.length * 10;
+    m += this.items.filter(i => i.k === 'shard').length * 4;
+    m += this.cust.filter(c => c.ty === 'squatter' && ['squat', 'reseat'].includes(c.st)).length * 3;
+    for (const stName of ['griddle', 'pan']) for (const s of this.st[stName]) if (s && (s.st === 'burning' || s.st === 'burnt')) m += 2;
+    return m;
+  }
+  drcFamOpen(key) {
+    const e = DIR_EV[key];
+    if (e.service) return true;
+    const active = Object.keys(this.drc.famAt).filter(f => this.drc.famAt[f] > this.t - 45);
+    return active.includes(e.fam) || active.length < DIR.maxFam;
+  }
+  /** Book a module: bookkeeping, the telegraph, then the lead-in wait. Every
+   *  path into the pressure web goes through here so "announces itself before
+   *  it bites" can never be bypassed. */
+  drcSchedule(key, why) {
+    const d = this.drc, e = DIR_EV[key];
+    d.used[key] = (d.used[key] || 0) + 1;
+    d.cd[key] = e.cd || 0;
+    if (!e.service) d.famAt[e.fam] = this.t;
+    if ((e.cost || 0) >= 20) d.valveT = DIR.valve;
+    if (d.log.length < 60) d.log.push({ t: this.t | 0, key, why });
+    this.push({ k: 'tg', s: e.tg });
+    d.pending.push({ key, tLeft: DIR.lead });
+  }
+  drcPending(key) { return this.drc.pending.some(p => p.key === key); }
+  drcTick() {
+    const d = this.drc;
+    const phase = this.phaseId();
+    d.budget = Math.min(DIR.budget[phase] || 0, d.budget + DIR.regen);
+    if (d.valveT > 0) d.valveT -= 1;
+    for (const k of Object.keys(d.cd)) if (d.cd[k] > 0) d.cd[k] -= 1;
+    // fire pending effects whose telegraph lead elapsed
+    for (let i = d.pending.length - 1; i >= 0; i--) {
+      const pe = d.pending[i];
+      pe.tLeft -= 1;
+      if (pe.tLeft <= 0) { d.pending.splice(i, 1); this.drcFire(pe.key); }
+    }
+    // authored opening fault: something is ALREADY broken (bible §7)
+    if (!d.prepDone && this.t >= DIR.prepFault) { d.prepDone = true; this.drcSchedule('shardsopen', 'prep'); }
+    // fixed-time set pieces — the old AT clocks, now telegraphed and
+    // family-fair: social pressure WAITS for a slot rather than piling on
+    for (const key of Object.keys(DIR_EV)) {
+      const e = DIR_EV[key];
+      if (!e.at && !e.ats) continue;
+      if ((d.cd[key] || 0) > 0 || this.drcPending(key)) continue;
+      if (e.day && this.day < e.day) continue;
+      if (e.ats) {
+        const at = C[e.ats].find(a => this.t >= a && !this.squatDone.includes(a));
+        if (at == null) continue;
+        if ((d.used[key] || 0) >= (e.max || 99)) continue;
+        if (!this.drcFamOpen(key)) continue;
+        this.squatDone.push(at);
+        this.drcSchedule(key, 'set');
+        continue;
+      }
+      if (this.t < C[e.at]) continue;
+      if (key === 'dale') {
+        // Dale comes back after a walk (the regular's return keeps its old rule)
+        if (this.dale || (this._daleGone != null && this.t - this._daleGone <= 120)) continue;
+        if (this._daleGone == null && (d.used.dale || 0) > 0) continue;
+      } else if ((d.used[key] || 0) >= (e.max || 99)) continue;
+      if (!this.drcFamOpen(key)) continue;
+      this.drcSchedule(key, 'set');
+    }
+    if (phase === 'last_call') return;
+    // guaranteed headlines: compression fails one system, the break point
+    // lands one big beat. Budget-free — the budget buys EXTRA friction, never
+    // the plot. Still obeys the ≤2-family rule (waits for a slot).
+    const hl = DIR.headline[phase];
+    if (hl && !d.hlDone[phase]) {
+      const ph = DIR.phases.find(q => q.id === phase);
+      if (this.t - ph.start >= hl.at) {
+        const live = hl.pool.filter(k => (d.used[k] || 0) < (DIR_EV[k].max || 99));
+        const pool = live.filter(k => this.drcFamOpen(k));
+        if (pool.length) { d.hlDone[phase] = true; this.drcSchedule(pool[this.ri(pool.length)], 'headline'); return; }
+        if (!live.length) d.hlDone[phase] = true;
+        else return; // wait for a family slot
+      }
+    }
+    // weighted extras: mess and the post-spike valve hold back NEW pressure
+    if (d.valveT > 0 || this.messScore() > DIR.messHold) return;
+    const cands = [];
+    for (const key of ['flockwave', 'greasefire', 'tourbus']) {
+      const e = DIR_EV[key];
+      if (!e.phases.includes(phase)) continue;
+      if ((d.used[key] || 0) >= e.max) continue;
+      if ((d.cd[key] || 0) > 0 || this.drcPending(key)) continue;
+      if (e.cost > d.budget) continue;
+      if (!this.drcFamOpen(key)) continue;
+      cands.push(e.w);
+      cands.push(key);
+    }
+    if (!cands.length) return;
+    let total = 0;
+    for (let i = 0; i < cands.length; i += 2) total += cands[i];
+    let roll = this.r() * total, chosen = cands[1];
+    for (let i = 0; i < cands.length; i += 2) { roll -= cands[i]; if (roll <= 0) { chosen = cands[i + 1]; break; } }
+    d.budget -= DIR_EV[chosen].cost;
+    this.drcSchedule(chosen, 'budget');
+  }
+  drcFire(key) {
+    if (key === 'squatter') this.spawnSquatter();
+    else if (key === 'zillow') { this.zillowDone = true; this.spawnZillow(); }
+    else if (key === 'dale') this.spawnDale();
+    else if (key === 'larper') this.spawnLarper();
+    else if (key === 'kale') this.spawnKale();
+    else if (key === 'sequoia') this.spawnSequoia();
+    else if (key === 'flockwave') { this.spawnFlock(false); this.flockQ += 1; }
+    else if (key === 'greasefire') {
+      const slots = LAYOUT.griddle.slots;
+      const s = slots[this.ri(slots.length)];
+      this.igniteAt(s.x, s.z, null);
+    } else if (key === 'shardsopen') {
+      for (let i = 0; i < 2; i++) this.spawnItem('shard', LAYOUT.sink.x + 0.5 + i * 0.55, 0, LAYOUT.sink.z + 0.9 + i * 0.3);
+      this.push({ k: 'openfault' });
+    } else if (key === 'tourbus') {
+      const before = this.cust.length;
+      for (let i = 0; i < 3; i++) this.spawnCampers(2);
+      const fresh = this.cust.slice(before);
+      if (!fresh.length) return;
+      for (const cu of fresh) cu.bus = true;
+      this.busT = C.BUS_CLOCK; this._busWarn = 0;
+      this.push({ k: 'busin' });
+    }
+  }
+  busHonk() {
+    this.busT = 0;
+    this.push({ k: 'bushonk' });
+    const parties = new Map();
+    for (const cu of this.cust) if (cu.bus) { if (!parties.has(cu.party)) parties.set(cu.party, []); parties.get(cu.party).push(cu); }
+    for (const [, members] of parties) {
+      const fed = members.some(m => m.st === 'eat' || m.eatT > 0);
+      if (fed) { this.rentE += C.BUS_BONUS; this.push({ k: 'tip', a: C.BUS_BONUS }); }
+      else for (const m of members) this.sendHome(m);
+    }
+    for (const cu of this.cust) cu.bus = false;
   }
 
   // ---- customers ------------------------------------------------------------
@@ -1036,14 +1234,7 @@ export class Sim {
         else if (s.st === 'ready' && s.cookT >= need + C.BURN_T[s.ing]) { s.st = 'burning'; this.push({ k: 'smoke', x: cfg.slots[i].x, z: cfg.slots[i].z }); }
         else if (s.st === 'burning' && s.cookT >= need + C.BURN_T[s.ing] + C.IGNITE_T) {
           s.st = 'burnt';
-          if (this.fires.length < C.FIRE_CAP) {
-            this.fires.push({ x: cfg.slots[i].x, z: cfg.slots[i].z, hp: 1, spreadT: C.FIRE_SPREAD });
-            this.stats.fires++;
-            if (s.by != null) this.pst(s.by).fi++;
-            this.push({ k: 'ignite', x: cfg.slots[i].x, z: cfg.slots[i].z, s: s.by }); this.queueReview('r_fire');
-            // Sequoia never misses content
-            if (this.cust.some(c => c.ty === 'sequoia' && ['wait', 'eat', 'sit'].includes(c.st))) { this.bumpGent(C.SEQ_GENT_CLIP); this.queueReview('r_seq_fire'); this.push({ k: 'seqclip' }); }
-          }
+          this.igniteAt(cfg.slots[i].x, cfg.slots[i].z, s.by);
         }
       }
     };
@@ -1054,6 +1245,17 @@ export class Sim {
     const maxPlates = this.up('dishpit') ? C.PLATES + 4 : C.PLATES;
     if (sk.dirty > 0) { sk.washT += dt; if (sk.washT >= washT) { sk.washT = 0; sk.dirty--; this.st.shelf = Math.min(maxPlates, this.st.shelf + 1); this.push({ k: 'wash' }); } }
     for (const [k, v] of this.st.scorch) { const nv = v - dt; if (nv <= 0) this.st.scorch.delete(k); else this.st.scorch.set(k, nv); }
+  }
+  // one funnel for every ignition — neglect and the director's scheduled
+  // grease fire share the blame/review/Sequoia-clip path (s null = the night's fault)
+  igniteAt(x, z, by) {
+    if (this.fires.length >= C.FIRE_CAP) return;
+    this.fires.push({ x, z, hp: 1, spreadT: C.FIRE_SPREAD });
+    this.stats.fires++;
+    if (by != null) this.pst(by).fi++;
+    this.push({ k: 'ignite', x, z, s: by }); this.queueReview('r_fire');
+    // Sequoia never misses content
+    if (this.cust.some(c => c.ty === 'sequoia' && ['wait', 'eat', 'sit'].includes(c.st))) { this.bumpGent(C.SEQ_GENT_CLIP); this.queueReview('r_seq_fire'); this.push({ k: 'seqclip' }); }
   }
   tickFires(dt) {
     for (const f of this.fires) {
@@ -1164,6 +1366,7 @@ export class Sim {
     this.squatDone = []; this.zillowDone = false; this.dale = null; this._daleGone = null;
     this._zpaid = 0; this._tx1 = 0; this._tx2 = 0; this._pendingOrder = new Map();
     this._larpDone = 0; this._kaleDone = 0; this._seqDone = 0;
+    this.drcInit();
     if (this._contagionNext) { this.flockQ = C.CONTAGION_FLOCKS; this._contagionNext = false; this.push({ k: 'contagion' }); }
     this.reviews = []; this.rentE = this.carry;
     for (const p of this.players.values()) {

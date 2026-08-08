@@ -453,6 +453,7 @@ function onEvent(e) {
     setTimeout(() => $('howto').style.display = 'none', 9000);
   }
   if (e.k === 'text' && STR.texts[e.s]) toast(STR.texts[e.s], e.s.startsWith('ll_') || e.s === 'zillow_out' ? 'll' : '');
+  if (e.k === 'tg' && STR.telegraphs[e.s]) toast(STR.telegraphs[e.s], 'tg');
   if (e.k === 'tip') toast(`tip +$${e.a}`, 'money');
   if (e.k === 'picked' && STR.specials[e.s]) toast(STR.pickedToast + STR.specials[e.s].n, 'll');
   if (e.k === 'bought' && STR.upgrades[e.u]) toast(STR.boughtToast + STR.upgrades[e.u].n, 'money');
