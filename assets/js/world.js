@@ -316,9 +316,18 @@ export class World {
     while (this.handItem.children.length) this.handItem.remove(this.handItem.children[0]);
     if (mini) {
       this.handItem.add(stripBlob(this.buildItem(mini)));
-      (stack || []).forEach((s, i) => { const im = stripBlob(this.buildItem(s)); im.position.y = 0.2 * (i + 1); im.rotation.y = (i + 1) * 0.4; this.handItem.add(im); });
+      const onTray = mini.k === 'tray';
+      (stack || []).forEach((s, i) => {
+        const im = stripBlob(this.buildItem(s));
+        if (onTray) { const tp = TRAY_SPOTS[i] || [0, 0.07 + 0.16 * i, 0]; im.position.set(tp[0], tp[1], tp[2]); }
+        else { im.position.y = 0.2 * (i + 1); im.rotation.y = (i + 1) * 0.4; }
+        this.handItem.add(im);
+      });
     }
     const holding = !!mini;
+    // a tray rides higher and closer so its surface (and the load) stays in frame
+    if (mini && mini.k === 'tray') this.handItem.position.set(0.08, -0.33, -0.56);
+    else this.handItem.position.set(0.26, -0.44, -0.66);
     this.handL.rotation.x = holding ? -1.5 : -1.15;
     this.handR.rotation.x = holding ? -1.5 : -1.15;
   }
@@ -509,17 +518,35 @@ export class World {
       m.add(GEO.cyl, 0xc44536, s.x, 0.62, s.z, 0.54, 0.14, 0.54);
       m.add(GEO.cyl, 0x8a2f22, s.x, 0.68, s.z, 0.5, 0.04, 0.5);
     }
-    // ⚠️ a dark body in the METAL group goes black — the register is painted steel
-    mp.add(GEO.box, 0xd8d2c4, 5.9, 1.25, -2.6, 0.8, 0.6, 0.6);          // register on east counter
-    mp.add(GEO.box, 0x8a8f98, 5.9, 1.5, -2.45, 0.5, 0.3, 0.3, -0.5);
-    mt.add(GEO.box, 0xb9c0c8, 5.9, 1.58, -2.6, 0.62, 0.06, 0.5);        // chrome cap
-    gl.add(GEO.box, 0x7fd8a0, 5.9, 1.53, -2.38, 0.36, 0.16, 0.02);      // register readout
+    // ⚠️ a dark body in the METAL group goes black — the register is painted steel.
+    // ⚠️ placement: the register lives on the EAST counter stub (x 7.2–12) —
+    // x 5.9 was INSIDE the walkway gap, floating mid-air where players sprint.
+    mp.add(GEO.box, 0xd8d2c4, 8.6, 1.25, -2.6, 0.8, 0.6, 0.6);          // register on east counter
+    mp.add(GEO.box, 0x8a8f98, 8.6, 1.5, -2.45, 0.5, 0.3, 0.3, -0.5);
+    mt.add(GEO.box, 0xb9c0c8, 8.6, 1.58, -2.6, 0.62, 0.06, 0.5);        // chrome cap
+    gl.add(GEO.box, 0x7fd8a0, 8.6, 1.53, -2.38, 0.36, 0.16, 0.02);      // register readout
     // pie case on the pass — glass dome + a whole huckleberry pie
     m.add(GEO.cyl, PAL.white, 3.4, 1.02, -2.6, 0.72, 0.06, 0.72);
     m.add(GEO.cyl, 0x8a5a3a, 3.4, 1.09, -2.6, 0.6, 0.1, 0.6);
     m.add(GEO.cyl, 0x5a3a6a, 3.4, 1.14, -2.6, 0.5, 0.04, 0.5);
-    m.add(GEO.box, PAL.wood, 7.6, 0.7, -0.9, 1.1, 1.4, 0.7);            // jukebox
-    m.add(GEO.sph, PAL.teal, 7.6, 1.45, -0.9, 1.1, 0.7, 0.7);
+    // the jukebox hugs the EAST WALL (it used to squat in the gap exit, a
+    // fake-solid players ghosted through — the worst kind of incoherence)
+    m.add(GEO.box, PAL.wood, 11.35, 0.7, -0.9, 1.1, 1.4, 0.7);
+    m.add(GEO.sph, PAL.teal, 11.35, 1.45, -0.9, 1.1, 0.7, 0.7);
+    // east-wall life: the bare corner finally furnished (all view-only, wall-hugging)
+    mp.add(GEO.cyl, 0xc44536, 11.4, 0.5, 0.9, 0.34, 1.0, 0.34);         // gumball machine
+    gl.add(GEO.sph, 0xffd98a, 11.4, 1.2, 0.9, 0.4, 0.4, 0.4);
+    mp.add(GEO.box, 0x8a8f98, 11.4, 0.05, 0.9, 0.4, 0.1, 0.4);
+    m.add(GEO.cyl, 0x8a5a3a, 11.35, 0.4, 3.6, 0.5, 0.5, 0.5);           // fern in a pot
+    for (const [fx2, fz2] of [[0, 0], [0.2, 0.1], [-0.2, 0.1], [0.1, -0.2], [-0.1, -0.15]])
+      mp.add(GEO.cone, 0x4f7a4a, 11.35 + fx2, 0.95, 3.6 + fz2, 0.3, 0.7, 0.3);
+    mp.add(GEO.tri, 0x2c4a6a, 11.93, 2.3, 1.9, 1.4, 0.5, 1, 0, -Math.PI / 2, 0); // MONTANA pennant
+    m.add(GEO.cyl, PAL.woodDark, 8.2, 0.9, 6.75, 0.09, 1.8, 0.09);      // coat rack by the door
+    m.add(GEO.cyl, PAL.woodDark, 8.2, 1.78, 6.75, 0.4, 0.06, 0.4);
+    mp.add(GEO.sph, 0x9d4e35, 8.05, 1.62, 6.7, 0.3, 0.34, 0.22);        // somebody's coat
+    mp.add(GEO.cyl, 0x6b4f33, 8.42, 1.86, 6.75, 0.26, 0.1, 0.26);       // somebody's hat
+    mp.add(GEO.tri, 0xf0e442, 4.6, 0.42, -2.12, 0.5, 0.8, 1);           // wet-floor sign by the dishpit
+    mp.add(GEO.tri, 0xf0e442, 4.6, 0.42, -2.18, 0.5, 0.8, 1, 0, Math.PI, 0);
     // elk head, west wall
     m.add(GEO.box, PAL.woodDark, -11.9, 2.0, 2.0, 0.15, 0.9, 0.9);
     m.add(GEO.box, 0x8a6a4a, -11.6, 2.05, 2.0, 0.5, 0.42, 0.36);
@@ -575,6 +602,14 @@ export class World {
       g2.renderOrder = 5;
       this.windowGlow.push(g2); this.scene.add(g2);
     }
+    // the tray rack: a peg and three trays at the east end of the pass —
+    // where the runner's loop starts
+    const rack = new THREE.Group();
+    rack.position.set(LAYOUT.trayRack.x, 0, LAYOUT.trayRack.z);
+    rack.add(mesh(GEO.cyl, M(0x5a3a24), 0, 1.22, 0, 0.07, 0.5, 0.07));
+    for (let i = 0; i < 3; i++) rack.add(mesh(GEO.cyl, M(i % 2 ? 0x6b4a2e : 0x7a5438, { r: 0.6 }), 0, 1.02 + i * 0.075, 0, 0.72, 0.05, 0.72));
+    castAll(rack);
+    this.scene.add(rack);
     this.plateStack = mesh(GEO.cyl, M(PAL.white), LAYOUT.shelf.x, 1.4, LAYOUT.shelf.z - 0.5, 0.62, 0.5, 0.62);
     this.dirtyStack = mesh(GEO.cyl, M(0xb8a27e), LAYOUT.sink.x - 0.35, 1.1, LAYOUT.sink.z - 0.3, 0.5, 0.3, 0.5);
     this.extMesh = this.buildItem({ k: 'ext' }); this.extMesh.position.set(LAYOUT.extHook.x, 1.35, -6.8);
@@ -874,6 +909,11 @@ export class World {
     else if (kind === 'ext') { g.add(mesh(GEO.caps, M(0xc42a1a), 0, 0.2, 0, 0.3, 0.3, 0.3)); g.add(mesh(GEO.cyl, M(0x2c2c30), 0.1, 0.44, 0, 0.06, 0.18, 0.06)); }
     else if (kind === 'shard') { const s = mesh(GEO.tri, M(PAL.creamDark), 0, 0.02, 0); s.rotation.x = -Math.PI / 2; s.scale.setScalar(0.3 + Math.random() * 0.3); g.add(s); }
     else if (kind === 'laptop') { g.add(mesh(GEO.box, M(0xd0d4d8), 0, 0.03, 0, 0.5, 0.05, 0.36)); const scr = mesh(GEO.box, M(0x3a4a5a), 0, 0.16, -0.16, 0.5, 0.3, 0.04); scr.rotation.x = 0.6; g.add(scr); }
+    else if (kind === 'tray') {
+      g.add(mesh(GEO.cyl, M(0x6b4a2e, { r: 0.6 }), 0, 0.03, 0, 0.72, 0.05, 0.72));
+      g.add(mesh(GEO.cyl, M(0x8a5a3a, { r: 0.55 }), 0, 0.055, 0, 0.62, 0.02, 0.62));
+      for (const a of [0, 1.57, 3.14, 4.71]) g.add(mesh(GEO.box, M(0x5a3a24), Math.sin(a) * 0.33, 0.07, Math.cos(a) * 0.33, 0.1, 0.05, 0.04, a));
+    }
     if (kind !== 'shard') g.add(blob(kind === 'plate' || kind === 'dish' ? 0.3 : 0.22));
     return g;
   }
@@ -897,7 +937,13 @@ export class World {
         while (slot.children.length) slot.remove(slot.children[0]);
         if (p.h) {
           slot.add(stripBlob(this.buildItem(p.h)));
-          (p.xs || []).forEach((m, ix) => { const im = stripBlob(this.buildItem(m)); im.position.y = 0.18 * (ix + 1); im.rotation.y = (ix + 1) * 0.4; slot.add(im); });
+          const onTray = p.h.k === 'tray';
+          (p.xs || []).forEach((m, ix) => {
+            const im = stripBlob(this.buildItem(m));
+            if (onTray) { const tp = TRAY_SPOTS[ix] || [0, 0.07 + 0.16 * ix, 0]; im.position.set(tp[0], tp[1], tp[2]); }
+            else { im.position.y = 0.18 * (ix + 1); im.rotation.y = (ix + 1) * 0.4; }
+            slot.add(im);
+          });
         }
       }
       v.g.visible = !p.off;
@@ -1048,6 +1094,12 @@ export class World {
     if (e.k === 'splash') { this.shake(0.2); for (let i = 0; i < 9; i++) this.puff(this.foam, e.x, 0.3, e.z, { life: 0.8, v: 2.6, vy: 3.2, s: 0.22 }); }
     if (e.k === 'slip') { for (let i = 0; i < 3; i++) this.puff(this.pop, e.x, 0.3, e.z, { life: 0.5, v: 2.2, vy: 1.6, s: 0.35 }); }
     if (e.k === 'tumble') this.shake(0.12);
+    if (e.k === 'traydump') { this.shake(0.2); for (let i = 0; i < 6; i++) { const p = this.puff(this.pop, e.x, 0.5, e.z, { life: 0.8, v: 3.4, vy: 2.8, s: 0.5 }); p.m.rotation.set(Math.random() * 3, Math.random() * 3, 0); } }
+    if (e.k === 'barge') { this.shake(0.18); for (let i = 0; i < 4; i++) this.puff(this.smoke, e.x, 0.4, e.z, { life: 0.5, v: 2, vy: 1, s: 0.3 }); }
+    if (e.k === 'helpup') this.emote('🤝', e.x, e.z);
+    if (e.k === 'subok') this.emote('🤫', e.x, e.z);
+    if (e.k === 'subfail') this.emote('😤', e.x, e.z);
+    if (e.k === 'callout') { const ic = { fire: '🔥', bus: '🚌', squat: '🧳', hands: '🆘', table: '🗒️', mess: '🧹', plates: '🍽️', need: '🙋' }[e.w] || '🙋'; this.emote(ic, e.x, e.z); }
     if (e.k === 'chime') this.doorT = 1.15;
     if (e.k === 'cha') this.moneyPop('+$' + e.a, e.x, e.z);
     if (e.k === 'order') { const pos = e.tb != null ? LAYOUT.tables[e.tb] : (e.st != null ? LAYOUT.stools[e.st] : null); if (pos) this.emote('📝', pos.x, pos.z); }
@@ -1411,6 +1463,8 @@ function face(head, opt = {}) {
   if (opt.mouth) head.add(mesh(GEO.box, M(0x8a4a44, { r: 0.5 }), 0, -0.17, ez - 0.02, opt.mouth, 0.035, 0.04));
 }
 function castAll(g) { g.traverse(o => { if (o.isMesh && o.material !== shadowMat) o.castShadow = true; }); return g; }
+// where loaded items sit on a carried tray (flat triangle, not a vertical armload)
+const TRAY_SPOTS = [[0, 0.07, 0.1], [-0.2, 0.07, -0.12], [0.2, 0.07, -0.12]];
 
 // ---- the humanoid ----------------------------------------------------------
 // One builder for cooks and customers: torso + hips + two-segment arms with

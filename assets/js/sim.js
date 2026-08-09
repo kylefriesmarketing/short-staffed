@@ -34,6 +34,14 @@ export const C = {
   SYSCO_COST: 80, SYSCO_ODDS: 0.6, SYSCO_YIELD: 4,
   PREMIUM_TROUT_MULT: 1.6, HUCK_BONUS: 15, CRED_PREMIUM: 1,
   BUS_CLOCK: 70, BUS_BONUS: 15, BUS_WARN: 12,
+  // the tray (last-local bible §9: "trays trade speed for fragility")
+  TRAY_CAP: 3, TRAY_SLOW: 0.88, TRAY_LOAD_SLOW: 0.04, TRAY_FUMBLE: 1.15, TRAY_WORLD: 3,
+  // the service lattice (bible §9): serving the WRONG dish is a deception roll
+  // against the archetype's savvy — "rename it, be brave"
+  SAVVY: { flock: 0.25, camper: 0.45, squatter: 0.35, zillow: 0.6, dale: 2, larper: 0.5, sequoia: 0.55, kale: 2 },
+  SUB_PAY: 0.8, SUB_CRED: 3, SUB_PATIENCE: 18,
+  // help-up + barge (the crew is solid; your friends are load-bearing)
+  HELPUP_CUT: 0.8, BARGE_SPEED: 4.6, BARGE_STUN: 0.7,
 };
 // ── THE DIRECTOR (ported from THE LAST LOCAL, bible §12) ────────────────────
 // The shift stops being a flat spawn curve and gains dramaturgy: named phases,
@@ -105,6 +113,7 @@ export const LAYOUT = {
   taps: [{ x: -2.9, z: -6.1, fill: 'coffee' }, { x: -2.1, z: -6.1, fill: 'matcha' }],
   sink: { x: 1.5, z: -6.1 }, bin: { x: 3.1, z: -6.1 },
   shelf: { x: -10.6, z: -6.1 },
+  trayRack: { x: 2.6, z: -2.6 },  // east end of the pass, where the runner's loop starts
   crates: [{ x: -11.3, z: -4.3, ing: 'batter' }, { x: -10.3, z: -4.3, ing: 'patty' }, { x: -9.3, z: -4.3, ing: 'trout' }],
   extHook: { x: 4.4, z: -6.3 },
   sign: { x: 9.2, z: 6.6 },
@@ -228,9 +237,10 @@ export class Sim {
     p.in.x = x; p.in.z = z; p.in.ah = !!m.ah; p.in.sp = !!m.sp;
     const fx = f(m.fx), fz = f(m.fz), fl = Math.hypot(fx, fz);
     if (fl > 0.3) { p.in.fx = fx / fl; p.in.fz = fz / fl; }
-    const a = m.a | 0, th = m.th | 0;
+    const a = m.a | 0, th = m.th | 0, co = m.co | 0;
     if (a > p.aSeen) { p.aPend += Math.min(4, a - p.aSeen); p.aSeen = a; }
     if (th > p.thSeen) { p.thPend += Math.min(4, th - p.thSeen); p.thSeen = th; }
+    if (co > (p.coSeen || 0)) { p.coPend = (p.coPend || 0) + Math.min(2, co - (p.coSeen || 0)); p.coSeen = co; }
   }
   again() { if (this.ph === 'over') { const keep = [...this.players.values()]; this.reset(); for (const p of keep) if (p.conn) this.join(p.pid, p.name, p.color); this.push({ k: 'start' }); } }
 
@@ -283,6 +293,18 @@ export class Sim {
         const push = (min - dd) / 2; dx /= dd; dz /= dd;
         a.x -= dx * push; a.z -= dz * push;
         b.x += dx * push; b.z += dz * push;
+        // THE BARGE (last-local's crew-is-solid rule): sprinting into a
+        // coworker stumbles them and empties their hands. The yelling knob.
+        const sa = Math.hypot(a.svx, a.svz), sb = Math.hypot(b.svx, b.svz);
+        const fast = sa > sb ? a : b, slow = sa > sb ? b : a;
+        if (Math.max(sa, sb) > C.BARGE_SPEED && Math.abs(sa - sb) > 1.6 && slow.stunT <= 0 && this.ph === 'shift') {
+          slow.stunT = C.BARGE_STUN;
+          slow.slideX = fast.svx * 0.5; slow.slideZ = fast.svz * 0.5;
+          if (slow.heldPl >= 0) this.releaseFriend(slow, false);
+          this.tumble(slow);
+          this.pst(fast.seat).bg = (this.pst(fast.seat).bg || 0) + 1;
+          this.push({ k: 'barge', s: fast.seat, v: slow.seat, x: slow.x, z: slow.z });
+        }
       }
     }
     this.tickStations(dt); this.tickFires(dt); this.tickCustomers(dt); this.tickItems(dt);
@@ -590,6 +612,7 @@ export class Sim {
               id: this.nid(), party: cu.party, table: cu.table, stool: cu.stool, ln: po.lines, t0: this.t, pat: C.PATIENCE,
               flock: !!po.flock, bonus: !!po.bonus, squat: !!po.squat, dale: !!po.dale,
               kale: !!po.kale, riddle: po.kale ? po.lines[0].d : undefined, tries: 0, seq: !!po.seq,
+              ty: cu.ty,
             });
             this.push({ k: 'order', tb: cu.table, st: cu.stool });
           }
@@ -660,7 +683,7 @@ export class Sim {
         if (d.refillT >= C.DALE_REFILL && !this.tickets.some(t => t.dale)) {
           d.refillT = 0; d.content = false; d.giveT = C.DALE_GIVEUP;
           const cu = this.cust.find(c => c.id === d.id);
-          if (cu) this.tickets.push({ id: this.nid(), party: cu.party, table: null, stool: cu.stool, ln: [{ d: 'coffee', ok: false }], t0: this.t, pat: C.PATIENCE, dale: true });
+          if (cu) this.tickets.push({ id: this.nid(), party: cu.party, table: null, stool: cu.stool, ln: [{ d: 'coffee', ok: false }], t0: this.t, pat: C.PATIENCE, dale: true, ty: 'dale' });
         }
       } else if (this.tickets.some(t => t.dale)) {
         d.giveT -= dt;
@@ -716,6 +739,7 @@ export class Sim {
     if (p.air) { this.tickAirPlayer(p, dt); return; }
     if (p.soakT > 0) p.soakT -= dt;
     if (p.heldPl >= 0) { p.carryT -= dt; if (p.carryT <= 0) this.releaseFriend(p, false); }
+    if (p.coT > 0) p.coT -= dt;
     if (p.stunT > 0) {
       p.stunT -= dt; p.aPend = 0; p.thPend = 0; p.spray = false;
       p.x += p.slideX * dt; p.z += p.slideZ * dt;
@@ -730,6 +754,8 @@ export class Sim {
     if (p.heldPl >= 0) mult *= C.CARRY_MULT;
     else if (p.heldCu) mult *= C.DRAG_MULT;
     if (p.soakT > 0) mult *= C.SOAK_MULT;
+    const heldTray = !!(p.held && this.itemOf(p.held)?.k === 'tray');
+    if (heldTray) mult *= C.TRAY_SLOW - p.stack.length * C.TRAY_LOAD_SLOW;
     const sprint = p.in.sp && p.heldPl < 0;
     if (sprint) mult *= C.SPRINT_MULT;
     const tx = p.in.x * C.COOK_SPEED * mult, tz = p.in.z * C.COOK_SPEED * mult;
@@ -742,9 +768,14 @@ export class Sim {
     this.clampPlayer(p);
     this.collideSolids(p, C.COOK_R);
     p.yaw = Math.atan2(p.in.fx, p.in.fz);
-    // wobble: a stack of plates hates speed, corners, and sprinting
+    // wobble: a bare armload hates speed, corners, and sprinting. A TRAY is
+    // steady at a walk — the trade is that sprinting rolls fumble dice, and
+    // one roll dumps EVERYTHING (bible §9: trays trade speed for fragility)
     const spd = Math.hypot(p.svx, p.svz);
-    if (p.stack.length > 0) {
+    if (heldTray) {
+      p.wob = Math.max(0, p.wob - dt * 2);
+      if (p.stack.length > 0 && sprint && spd > C.COOK_SPEED * 1.1 && this.r() < C.TRAY_FUMBLE * dt) this.trayDump(p);
+    } else if (p.stack.length > 0) {
       let turn = (p.yaw - (p._pyaw ?? p.yaw)) % (Math.PI * 2);
       if (turn > Math.PI) turn -= Math.PI * 2; if (turn < -Math.PI) turn += Math.PI * 2;
       const stress = (spd / C.COOK_SPEED) * (0.35 + p.stack.length * 0.3) + Math.abs(turn) / dt * 0.055 + (sprint ? 0.55 : 0);
@@ -767,6 +798,7 @@ export class Sim {
     p.spray = !!(p.in.ah && p.held && this.itemOf(p.held)?.k === 'ext');
     while (p.aPend > 0) { p.aPend--; this.doInteract(p); }
     while (p.thPend > 0) { p.thPend--; this.doThrow(p); }
+    while ((p.coPend || 0) > 0) { p.coPend--; this.doCallout(p); }
     if (p.spray) this.doSpray(p, dt);
   }
   clampPlayer(p) {
@@ -811,20 +843,39 @@ export class Sim {
   }
   tumble(p, hard) {
     const rel = [];
+    let hadTray = false;
     if (p.held) {
       const it = this.itemOf(p.held);
-      if (it && (hard || ['dish', 'plate', 'dirty', 'mug'].includes(it.k))) { rel.push(it); p.held = null; }
+      // a jolt takes the TRAY too — one shove and everything on it goes
+      if (it && (hard || ['dish', 'plate', 'dirty', 'mug', 'tray'].includes(it.k))) {
+        if (it.k === 'tray' && p.stack.length) hadTray = true;
+        rel.push(it); p.held = null;
+      }
     }
     for (const id of p.stack) { const it = this.itemOf(id); if (it) rel.push(it); }
     p.stack = []; p.wob = 0;
     if (!rel.length) return;
+    this.scatter(p, rel);
+    this.push({ k: hadTray ? 'traydump' : 'tumble', x: p.x, z: p.z, s: p.seat, n: rel.length });
+    if (hadTray) this.pst(p.seat).td = (this.pst(p.seat).td || 0) + 1;
+  }
+  scatter(p, rel) {
     for (const it of rel) {
       it.holder = null; it.ls = p.seat;
       const ang = this.r() * 6.283, v = 4.5 + this.r() * 3;
       it.x = p.x; it.y = 1.1; it.z = p.z;
       it.vx = Math.sin(ang) * v; it.vz = Math.cos(ang) * v; it.vy = 2.5 + this.r() * 2;
     }
-    this.push({ k: 'tumble', x: p.x, z: p.z, s: p.seat, n: rel.length });
+  }
+  trayDump(p) {
+    const rel = [];
+    if (p.held) { const it = this.itemOf(p.held); if (it) { rel.push(it); p.held = null; } }
+    for (const id of p.stack) { const it = this.itemOf(id); if (it) rel.push(it); }
+    p.stack = []; p.wob = 0;
+    if (!rel.length) return;
+    this.scatter(p, rel);
+    this.pst(p.seat).td = (this.pst(p.seat).td || 0) + 1;
+    this.push({ k: 'traydump', x: p.x, z: p.z, s: p.seat, n: rel.length });
   }
   slip(p) {
     if (p.stunT > 0) return;
@@ -866,14 +917,17 @@ export class Sim {
     if (p.heldCu) { const cu = this.cust.find(c => c.id === p.heldCu); if (cu) { cu.st = 'reseat'; cu.y = 0; } p.heldCu = null; return; }
     // 3. stations
     if (this.stationAct(p, held)) return;
-    // 4. taps
+    // 4. taps (a tray under the spout takes the pour straight onto the tray)
+    const heldTray = held && held.k === 'tray';
     for (let i = 0; i < LAYOUT.taps.length; i++) {
       const tp = LAYOUT.taps[i];
-      if (this.near(p, tp) && !held && this.st.taps[i] <= 0) {
+      if (this.near(p, tp) && (!held || (heldTray && p.stack.length < C.TRAY_CAP)) && this.st.taps[i] <= 0) {
         const pourT = this.up('espresso') ? 0.45 : C.POUR_T;
         p.busyT = pourT; this.st.taps[i] = pourT;
         const mug = this.spawnItem('mug', tp.x, 1, tp.z, { fill: tp.fill });
-        mug.holder = p.pid; p.held = mug.id; this.push({ k: 'pour', x: tp.x, z: tp.z });
+        mug.holder = p.pid;
+        if (heldTray) p.stack.push(mug.id); else p.held = mug.id;
+        this.push({ k: 'pour', x: tp.x, z: tp.z });
         return;
       }
     }
@@ -883,8 +937,35 @@ export class Sim {
     for (const cr of LAYOUT.crates) if (this.near(p, cr) && !held) { const it = this.spawnItem('raw', cr.x, 1, cr.z, { ing: cr.ing }); it.holder = p.pid; p.held = it.id; return; }
     // 7. extinguisher hook
     if (this.near(p, LAYOUT.extHook) && !held && !this.extOut) { this.extOut = true; const ex = this.spawnItem('ext', p.x, 1, p.z); ex.holder = p.pid; p.held = ex.id; return; }
+    // 7b. the tray rack: grab one empty-handed; return an empty tray to tidy up
+    if (this.near(p, LAYOUT.trayRack, 1.0)) {
+      if (!held && this.items.filter(i => i.k === 'tray').length < C.TRAY_WORLD) {
+        const tr = this.spawnItem('tray', p.x, 1, p.z);
+        tr.holder = p.pid; p.held = tr.id;
+        this.push({ k: 'traygrab', x: p.x, z: p.z });
+        return;
+      }
+      // return an empty tray — but never steal the press when there's
+      // something to LOAD in reach (grab-then-load at the rack must work)
+      if (heldTray && !p.stack.length
+        && !this.items.some(i => !i.holder && ['dish', 'plate', 'dirty', 'mug'].includes(i.k) && d2(p.x, p.z, i.x, i.z) < C.REACH * C.REACH)) {
+        this.removeItem(held.id); p.held = null; this.push({ k: 'trayback' }); return;
+      }
+    }
     // 8. tables / stools: serve, then bus
     if (this.tableAct(p, held)) return;
+    // 8b. help a downed coworker up — E cuts their stun to a fifth
+    {
+      const down = [...this.players.values()]
+        .filter(q => q !== p && q.conn && q.stunT > 0.45 && q.carriedBy < 0 && !q.air && d2(p.x, p.z, q.x, q.z) < 1.4 * 1.4)
+        .sort((a2, b2) => a2.seat - b2.seat)[0];
+      if (down) {
+        down.stunT *= (1 - C.HELPUP_CUT);
+        this.pst(p.seat).hu = (this.pst(p.seat).hu || 0) + 1;
+        this.push({ k: 'helpup', s: p.seat, v: down.seat, x: down.x, z: down.z });
+        return;
+      }
+    }
     // 9. squatter grab
     if (!held && !p.heldCu) {
       const sq = this.cust.find(c => c.ty === 'squatter' && ['squat', 'reseat', 'sit', 'wait'].includes(c.st) && this.near(p, c));
@@ -918,12 +999,16 @@ export class Sim {
       if (n) { this.st.sink.dirty += n; return; }
     }
     if (this.near(p, LAYOUT.bin) && held && ['burnt', 'raw', 'dirty', 'dish', 'mug'].includes(held.k)) { this.removeItem(held.id); p.held = null; this.push({ k: 'trash' }); return; }
-    // 11. stack another plate on the armload (risk it), counter put-down, pickup, sweep
+    // 11. load the armload/tray (risk it), counter put-down, pickup, sweep.
+    // A tray takes three of anything servable — mugs included, which bare
+    // hands refuse (you cannot balance a mug on a burger, but a tray can).
     const STACKABLE = ['dish', 'plate', 'dirty'];
-    if (held && STACKABLE.includes(held.k) && p.stack.length < C.STACK_MAX) {
+    const loadable = heldTray ? ['dish', 'plate', 'dirty', 'mug'] : STACKABLE;
+    const cap = heldTray ? C.TRAY_CAP : C.STACK_MAX;
+    if (held && (heldTray || STACKABLE.includes(held.k)) && p.stack.length < cap) {
       let best = null, bd = C.REACH * C.REACH;
       for (const it of this.items) {
-        if (it.holder || !STACKABLE.includes(it.k)) continue;
+        if (it.holder || !loadable.includes(it.k)) continue;
         const dd = d2(p.x, p.z, it.x, it.z);
         if (dd < bd) { bd = dd; best = it; }
       }
@@ -931,6 +1016,17 @@ export class Sim {
     }
     if (held) {
       for (const ps of LAYOUT.pass) if (this.near(p, ps, 1.3) && !this.items.some(i => !i.holder && i.y > 0.5 && d2(i.x, i.z, ps.x, ps.z) < 0.16)) {
+        // setting a TRAY down is the safe verb: the whole load lands gently
+        // on the counter (bible: "set it down and nothing breaks")
+        if (heldTray && p.stack.length) {
+          let ox = 0;
+          for (const id of p.stack) {
+            const it = this.itemOf(id); if (!it) continue;
+            it.holder = null; it.x = ps.x + ox; it.y = 0.98; it.z = ps.z; it.vx = it.vy = it.vz = 0;
+            ox += 0.34;
+          }
+          p.stack = [];
+        }
         held.holder = null; held.x = ps.x; held.y = 0.95; held.z = ps.z; held.vx = held.vy = held.vz = 0;
         p.held = p.stack.length ? p.stack.shift() : null;
         return;
@@ -1125,6 +1221,46 @@ export class Sim {
           if (tk.tries >= C.KALE_TRIES) { this.dropTicket(tk.party, true); this.queueReview('r_kale_bad'); this.stats.lost++; }
           return true;
         }
+        // ── THE SUBSTITUTION (last-local bible §9): serving the WRONG dish is
+        // a deception roll against the archetype's savvy. "Rename it. Be brave."
+        // One attempt per ticket; Dale and Kale can never be fooled (savvy 2).
+        if (!tk.sub) {
+          const isDrink = d => d === 'coffee' || d === 'matcha';
+          // deceive within the class: food renames as food, drink as drink —
+          // scan EVERY unfilled line for one your carried wrong item could pass as
+          let cand = null, line = null;
+          for (const l2 of tk.ln) {
+            if (l2.ok) continue;
+            const c2 = cands.find(cc => { const k2 = kindOf(cc.it); return k2 && isDrink(k2) === isDrink(l2.d); });
+            if (c2) { cand = c2; line = l2; break; }
+          }
+          if (cand && line) {
+            tk.sub = 1;
+            const savvy = C.SAVVY[tk.ty] ?? 0.5;
+            if (this.r() >= savvy) {
+              // it worked: they got "basically the same thing, artisanally renamed"
+              line.ok = true;
+              const kind = kindOf(cand.it);
+              let pay = Math.round((C.PAY[line.d] || C.PAY[kind]) * C.SUB_PAY);
+              if (cand.it.sad) pay = Math.round(pay / 2);
+              this.rentE += pay; this.stats.served++; this.pst(p.seat).sv++;
+              this.pst(p.seat).su = (this.pst(p.seat).su || 0) + 1;
+              this.removeItem(cand.it.id);
+              if (cand.src === 'h') p.held = p.stack.length ? p.stack.shift() : null;
+              else p.stack.splice(cand.src, 1);
+              this.push({ k: 'cha', a: pay, x: p.x, z: p.z });
+              this.push({ k: 'subok', x: p.x, z: p.z, s: p.seat });
+              if (tk.ln.every(l2 => l2.ok)) this.completeTicket(tk);
+            } else {
+              // caught: the table is INSULTED, and the town hears about it
+              tk.pat -= C.SUB_PATIENCE;
+              this.bumpCred(-C.SUB_CRED);
+              this.push({ k: 'subfail', x: p.x, z: p.z, s: p.seat });
+              this.queueReview(tk.ty === 'dale' ? 'r_dale' : 'r_sub_caught');
+            }
+            return true;
+          }
+        }
         continue;
       }
       ln.ok = true;
@@ -1188,6 +1324,15 @@ export class Sim {
     }
     if (p.held) {
       const it = this.itemOf(p.held);
+      // throwing a LOADED tray dumps the load mid-swing — physics is not a waiter
+      if (it && it.k === 'tray' && p.stack.length) {
+        const rel = [];
+        for (const id of p.stack) { const q = this.itemOf(id); if (q) rel.push(q); }
+        p.stack = [];
+        this.scatter(p, rel);
+        this.pst(p.seat).td = (this.pst(p.seat).td || 0) + 1;
+        this.push({ k: 'traydump', x: p.x, z: p.z, s: p.seat, n: rel.length });
+      }
       p.held = p.stack.length ? p.stack.shift() : null;
       if (it) {
         it.holder = null; it.ls = p.seat;
@@ -1245,6 +1390,21 @@ export class Sim {
     const maxPlates = this.up('dishpit') ? C.PLATES + 4 : C.PLATES;
     if (sk.dirty > 0) { sk.washT += dt; if (sk.washT >= washT) { sk.washT = 0; sk.dirty--; this.st.shelf = Math.min(maxPlates, this.st.shelf + 1); this.push({ k: 'wash' }); } }
     for (const [k, v] of this.st.scorch) { const nv = v - dt; if (nv <= 0) this.st.scorch.delete(k); else this.st.scorch.set(k, nv); }
+  }
+  // the callout: ONE button that reads the room (last-local's C). Sim-side so
+  // every client sees the same beacon; the priority order is the danger order.
+  doCallout(p) {
+    if ((p.coT || 0) > 0) return;
+    p.coT = 2;
+    let w = 'need';
+    if (this.fires.length) w = 'fire';
+    else if (this.busT > 0) w = 'bus';
+    else if (this.cust.some(c => c.ty === 'squatter' && ['squat', 'reseat'].includes(c.st))) w = 'squat';
+    else if ([...this.players.values()].some(q => q !== p && q.conn && q.stunT > 0.4)) w = 'hands';
+    else if (this.tickets.some(tk => tk.pat < C.PATIENCE * 0.3)) w = 'table';
+    else if (this.items.filter(i => i.k === 'shard' && !i.holder).length >= 2) w = 'mess';
+    else if (this.st.shelf <= 2) w = 'plates';
+    this.push({ k: 'callout', s: p.seat, w, x: p.x, z: p.z });
   }
   // one funnel for every ignition — neglect and the director's scheduled
   // grease fire share the blame/review/Sequoia-clip path (s null = the night's fault)
@@ -1372,7 +1532,7 @@ export class Sim {
     for (const p of this.players.values()) {
       p.held = null; p.heldCu = null; p.busyT = 0; p.spray = false;
       p.stack = []; p.wob = 0; p.stunT = 0; p.carriedBy = -1; p.heldPl = -1; p.air = null; p.y = 0; p.soakT = 0;
-      p.slideX = 0; p.slideZ = 0; p.svx = 0; p.svz = 0;
+      p.slideX = 0; p.slideZ = 0; p.svx = 0; p.svz = 0; p.coT = 0;
     }
   }
 

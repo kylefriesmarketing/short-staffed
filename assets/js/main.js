@@ -131,6 +131,7 @@ addEventListener('keydown', e => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { sprintKey = true; e.preventDefault(); }
   if (e.code === 'KeyE' || e.code === 'Enter') { input.a++; input.ah = true; e.preventDefault(); }
   if (e.code === 'Space') { input.th++; e.preventDefault(); }
+  if (e.code === 'KeyC') { input.co = (input.co || 0) + 1; e.preventDefault(); }
   if (e.code === 'KeyV') {
     fpMode = !fpMode;
     if (world) world.fp = fpMode;
@@ -454,6 +455,7 @@ function onEvent(e) {
   }
   if (e.k === 'text' && STR.texts[e.s]) toast(STR.texts[e.s], e.s.startsWith('ll_') || e.s === 'zillow_out' ? 'll' : '');
   if (e.k === 'tg' && STR.telegraphs[e.s]) toast(STR.telegraphs[e.s], 'tg');
+  if (e.k === 'callout' && STR.callouts[e.w]) toast('📣 ' + nameOf(e.s) + ': ' + STR.callouts[e.w], 'tg');
   if (e.k === 'tip') toast(`tip +$${e.a}`, 'money');
   if (e.k === 'picked' && STR.specials[e.s]) toast(STR.pickedToast + STR.specials[e.s].n, 'll');
   if (e.k === 'bought' && STR.upgrades[e.u]) toast(STR.boughtToast + STR.upgrades[e.u].n, 'money');
@@ -479,7 +481,7 @@ function updateHighlight() {
     LAYOUT.huckBushes.forEach((b2, i) => { if (lastSnap.bu && lastSnap.bu[i] > 0) cands.push([b2.x, b2.z, C.REACH]); });
     cands.push([LAYOUT.truck.x, LAYOUT.truck.z, 2.6], [LAYOUT.payphone.x, LAYOUT.payphone.z, 1.7]);
   }
-  else for (const sp of [...LAYOUT.griddle.slots, ...LAYOUT.pan.slots, ...LAYOUT.taps, LAYOUT.sink, LAYOUT.bin, LAYOUT.shelf, ...LAYOUT.crates, LAYOUT.extHook]) cands.push([sp.x, sp.z, C.REACH]);
+  else for (const sp of [...LAYOUT.griddle.slots, ...LAYOUT.pan.slots, ...LAYOUT.taps, LAYOUT.sink, LAYOUT.bin, LAYOUT.shelf, ...LAYOUT.crates, LAYOUT.extHook, LAYOUT.trayRack]) cands.push([sp.x, sp.z, C.REACH]);
   for (const it of lastSnap.it) if (it.k !== 'shard') cands.push([it.x, it.z, C.REACH]);
   for (const cu of lastSnap.cu) if (cu.ty === 'squatter' && ['squat', 'reseat', 'sit', 'wait'].includes(cu.st)) cands.push([cu.x, cu.z, C.REACH]);
   for (const t of lastSnap.tk) { const pos = t.tb != null ? LAYOUT.tables[t.tb] : LAYOUT.stools[t.sl]; if (pos) cands.push([pos.x, pos.z, t.tb != null ? 2.3 : C.REACH]); }
@@ -515,14 +517,14 @@ function computeInput() {
   input.x = x; input.z = z;
   input.sp = sprintKey || padSprint || touchMag > 1.35;
   if (world) { world.look = look; world.sprinting = input.sp && l > 0.1; }
-  if (net) { net.input.x = input.x; net.input.z = input.z; net.input.fx = input.fx; net.input.fz = input.fz; net.input.a = input.a; net.input.th = input.th; net.input.ah = input.ah; net.input.sp = input.sp; }
+  if (net) { net.input.x = input.x; net.input.z = input.z; net.input.fx = input.fx; net.input.fz = input.fz; net.input.a = input.a; net.input.th = input.th; net.input.ah = input.ah; net.input.sp = input.sp; net.input.co = input.co; }
 }
 function stepLocal(dt) {
   if (!LOCAL || !localSim) return;
   localAcc += dt;
   while (localAcc >= C.TICK) {
     localAcc -= C.TICK;
-    localSim.input('me', { x: input.x, z: input.z, fx: input.fx, fz: input.fz, a: input.a, th: input.th, ah: input.ah });
+    localSim.input('me', { x: input.x, z: input.z, fx: input.fx, fz: input.fz, a: input.a, th: input.th, ah: input.ah, sp: input.sp, co: input.co });
     const evs = localSim.tick(C.TICK);
     for (const e of evs) onEvent(e);
     if (++localTick % 2 === 0) applySnap(localSim.snapshot());

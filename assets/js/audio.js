@@ -163,6 +163,14 @@ export function sfx(k, x, z) {
     case 'text': tone(1976, 2200, 0.09, 'sine', 0.1); setTimeout(() => tone(1976, 1760, 0.09, 'sine', 0.08), 90); break;
     // the director's second channel: a low anticipatory two-note under every telegraph toast
     case 'tg': tone(392, 392, 0.16, 'triangle', 0.11); setTimeout(() => tone(466, 466, 0.24, 'triangle', 0.1), 140); break;
+    case 'traydump': noise(0.35, 0.34, 1200, 5200, x, z); tone(2400, 900, 0.2, 'square', 0.08, x, z); setTimeout(() => noise(0.2, 0.2, 900, 3600, x, z), 130); break;
+    case 'traygrab': tone(340, 300, 0.08, 'triangle', 0.12, x, z); break;
+    case 'trayback': tone(300, 340, 0.08, 'triangle', 0.1); break;
+    case 'barge': tone(130, 60, 0.22, 'sine', 0.26, x, z, 'exp'); noise(0.12, 0.14, 100, 500, x, z); break;
+    case 'helpup': tone(523, 659, 0.14, 'triangle', 0.12, x, z); setTimeout(() => tone(784, 784, 0.16, 'triangle', 0.1, x, z), 110); break;
+    case 'callout': tone(880, 1174, 0.12, 'square', 0.12, x, z); setTimeout(() => tone(1174, 880, 0.14, 'square', 0.1, x, z), 130); break;
+    case 'subok': tone(660, 880, 0.09, 'sine', 0.08, x, z); setTimeout(() => tone(990, 1320, 0.08, 'sine', 0.06, x, z), 90); break;
+    case 'subfail': [220, 208].forEach((f, i) => setTimeout(() => tone(f, f * 0.96, 0.22, 'sawtooth', 0.1, x, z), i * 180)); break;
     case 'openfault': noise(0.2, 0.2, 1400, 4200); tone(2200, 1100, 0.14, 'square', 0.05); break;
     case 'busin': noise(0.8, 0.14, 200, 900); tone(155, 110, 0.5, 'sawtooth', 0.1, x, z, 'exp'); break;
     case 'buswarn': tone(233, 233, 0.18, 'sawtooth', 0.12); setTimeout(() => tone(233, 233, 0.18, 'sawtooth', 0.12), 240); break;
