@@ -24,6 +24,7 @@ export const STR = {
 
   dishes: { flapjacks: 'Huckleberry Flapjacks', burger: 'Bison Burger', trout: 'Cutthroat Trout', coffee: 'Coffee, Black', matcha: 'Matcha (oat)' },
   dishIcons: { flapjacks: '🥞', burger: '🍔', trout: '🐟', coffee: '☕', matcha: '🍵' },
+  dishShort: { flapjacks: 'Flapjacks', burger: 'Burger', trout: 'Trout', coffee: 'Coffee', matcha: 'Matcha' },
   sadTag: 'sad',
   tableTag: 'Table',
   stoolTag: 'Counter',
@@ -39,6 +40,7 @@ export const STR = {
     flock_post: 'The Flock posted about you. More of them are coming.',
     kale_in: 'Kale (his real name) is ready to order. Entirely off-menu.',
     seq_in: '🤳 Sequoia is here. She is already filming your flat-top.',
+    sink_backup: '🧼 The dishpit is backing up. The floor is about to get interesting.',
   },
   riddles: {
     flapjacks: '"A deconstructed stack narrative. Huckleberry-forward. ZERO seed oils."',
@@ -123,6 +125,7 @@ export const STR = {
     'Make RENT by close. Ridgeline Capital is "so grateful."',
     'MOUSE looks · E grabs/uses · SPACE throws · SHIFT sprints · C shouts',
     'The TRAY (east end of the counter) hauls three at a walk. Sprinting it is a bet.',
+    'Spills slip anyone at speed. The MOP hangs by the sink.',
     'Yes, you can pick up your coworkers. SPACE throws them too.',
   ],
   vcOff: '🎤 voice', vcOn: '🎤 LIVE', vcErr: '🎤 blocked', vcConn: '🎤 …',

@@ -613,7 +613,13 @@ export class World {
     this.plateStack = mesh(GEO.cyl, M(PAL.white), LAYOUT.shelf.x, 1.4, LAYOUT.shelf.z - 0.5, 0.62, 0.5, 0.62);
     this.dirtyStack = mesh(GEO.cyl, M(0xb8a27e), LAYOUT.sink.x - 0.35, 1.1, LAYOUT.sink.z - 0.3, 0.5, 0.3, 0.5);
     this.extMesh = this.buildItem({ k: 'ext' }); this.extMesh.position.set(LAYOUT.extHook.x, 1.35, -6.8);
-    this.scene.add(this.plateStack, this.dirtyStack, this.extMesh);
+    // the mop on its hook (visible whenever nobody carried it off)
+    this.mopMesh = stripBlob(this.buildItem({ k: 'mop' }));
+    this.mopMesh.position.set(LAYOUT.mopHook.x, 0.55, LAYOUT.mopHook.z - 0.45);
+    this.mopMesh.rotation.z = 0.14;
+    this.scene.add(this.plateStack, this.dirtyStack, this.extMesh, this.mopMesh);
+    this.spillMeshes = new Map();
+    this.bubbles = new Map();
     this.buildYard();
     this.buildLife();
   }
@@ -914,10 +920,55 @@ export class World {
       g.add(mesh(GEO.cyl, M(0x8a5a3a, { r: 0.55 }), 0, 0.055, 0, 0.62, 0.02, 0.62));
       for (const a of [0, 1.57, 3.14, 4.71]) g.add(mesh(GEO.box, M(0x5a3a24), Math.sin(a) * 0.33, 0.07, Math.cos(a) * 0.33, 0.1, 0.05, 0.04, a));
     }
+    else if (kind === 'mop') {
+      const stick = mesh(GEO.cyl, M(0x8a7a5a), 0, 0.55, 0, 0.05, 1.1, 0.05);
+      g.add(stick);
+      g.add(mesh(GEO.box, M(0xd8d2c4, { r: 0.95 }), 0, 0.06, 0, 0.3, 0.12, 0.2));
+      for (const dx of [-0.1, 0, 0.1]) g.add(mesh(GEO.cyl, M(0xc4bcac, { r: 0.95 }), dx, 0.03, 0.06, 0.05, 0.1, 0.05));
+    }
     if (kind !== 'shard') g.add(blob(kind === 'plate' || kind === 'dish' ? 0.3 : 0.22));
     return g;
   }
   itemKey(it) { return it.k + '|' + (it.d || 0) + '|' + (it.s || 0) + '|' + (it.m || 0); }
+
+  // ── order bubbles: the ticket floats over the TABLE, readable across the
+  // room (last-local's world markers — you read the floor, not the rail)
+  syncBubbles(snap) {
+    const DISH_EMO = { flapjacks: '🥞', burger: '🍔', trout: '🐟', coffee: '☕', matcha: '🍵', '?': '❓' };
+    const seen = new Set();
+    for (const t of snap.tk) {
+      const pos = t.tb != null ? LAYOUT.tables[t.tb] : (t.sl != null ? LAYOUT.stools[t.sl] : null);
+      if (!pos) continue;
+      const un = t.ln.filter(l => !l.ok);
+      if (!un.length) continue;
+      seen.add(t.i);
+      const sig = un.map(l => l.d).join(',') + '|' + Math.round(t.pa * 24);
+      let b = this.bubbles.get(t.i);
+      if (b && b.sig === sig) continue;
+      if (b) this.scene.remove(b.g);
+      const g = new THREE.Group();
+      g.position.set(pos.x, t.tb != null ? 2.2 : 2.05, pos.z);
+      const n = Math.min(un.length, 4);
+      un.slice(0, 4).forEach((l, i) => {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: emojiTexture(DISH_EMO[l.d] || '❓'), transparent: true, depthWrite: false, depthTest: false }));
+        sp.scale.set(0.62, 0.62, 1);
+        sp.position.x = (i - (n - 1) / 2) * 0.56;
+        sp.renderOrder = 6;
+        g.add(sp);
+      });
+      // patience bar: green → amber → red, always camera-facing (sprites)
+      const w = Math.max(0.55, n * 0.5);
+      const barBack = new THREE.Sprite(new THREE.SpriteMaterial({ map: barTexture(0x2c2620), transparent: true, opacity: 0.6, depthWrite: false, depthTest: false }));
+      barBack.scale.set(w, 0.07, 1); barBack.position.y = -0.36; barBack.renderOrder = 6;
+      const col = t.pa > 0.5 ? 0x5c9e4f : t.pa > 0.25 ? 0xe8b53a : 0xd94f38;
+      const barFront = new THREE.Sprite(new THREE.SpriteMaterial({ map: barTexture(col), depthWrite: false, depthTest: false }));
+      barFront.scale.set(Math.max(0.02, w * t.pa), 0.085, 1); barFront.position.set(-(w * (1 - t.pa)) / 2, -0.36, 0); barFront.renderOrder = 7;
+      g.add(barBack, barFront);
+      this.scene.add(g);
+      this.bubbles.set(t.i, { g, sig });
+    }
+    for (const [id, b] of this.bubbles) if (!seen.has(id)) { this.scene.remove(b.g); this.bubbles.delete(id); }
+  }
 
   // ---- snapshot application ---------------------------------------------------
   applySnap(snap, you) {
@@ -998,6 +1049,29 @@ export class World {
       this.fi.get(k).hp = f.hp;
     }
     for (const [k, v] of this.fi) if (!seenF.has(k)) { this.scene.remove(v.g); this.fi.delete(k); }
+    // spills: dark wet decals — polygonOffset, never a raised y (the AoT law)
+    if (snap.spl) {
+      const seenS = new Set();
+      for (const s of snap.spl) {
+        seenS.add(s.i);
+        if (!this.spillMeshes.has(s.i)) {
+          const g = new THREE.Group();
+          const mat = new THREE.MeshBasicMaterial({ color: 0x35424e, transparent: true, opacity: 0.5, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, depthWrite: false });
+          const d1 = mesh(GEO.disc, mat); d1.rotation.x = -Math.PI / 2; d1.scale.set(1.15, 0.9, 1);
+          const d2b = mesh(GEO.disc, mat); d2b.rotation.x = -Math.PI / 2; d2b.scale.set(0.7, 0.85, 1); d2b.position.set(0.35, 0, 0.2);
+          const sh = mesh(GEO.disc, new THREE.MeshBasicMaterial({ color: 0x9fc4d8, transparent: true, opacity: 0.18, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, depthWrite: false }));
+          sh.rotation.x = -Math.PI / 2; sh.scale.set(0.6, 0.45, 1); sh.position.set(-0.1, 0, -0.08);
+          d1.renderOrder = 2; d2b.renderOrder = 2; sh.renderOrder = 3;
+          g.add(d1, d2b, sh);
+          g.position.set(s.x, 0.001, s.z);
+          g.rotation.y = (s.i % 7) * 0.9;
+          this.scene.add(g); this.spillMeshes.set(s.i, g);
+        }
+      }
+      for (const [id, g] of this.spillMeshes) if (!seenS.has(id)) { this.scene.remove(g); this.spillMeshes.delete(id); }
+    }
+    if (this.mopMesh) this.mopMesh.visible = !snap.mo;
+    this.syncBubbles(snap);
     // supply yard dynamics
     if (this.bushViews && snap.bu) for (let i = 0; i < this.bushViews.length; i++) {
       const picks = snap.bu.length ? (snap.bu[i] ?? 0) : 3;
@@ -1465,6 +1539,18 @@ function face(head, opt = {}) {
 function castAll(g) { g.traverse(o => { if (o.isMesh && o.material !== shadowMat) o.castShadow = true; }); return g; }
 // where loaded items sit on a carried tray (flat triangle, not a vertical armload)
 const TRAY_SPOTS = [[0, 0.07, 0.1], [-0.2, 0.07, -0.12], [0.2, 0.07, -0.12]];
+// tiny solid-colour textures for billboard bars (patience under order bubbles)
+const barCache = new Map();
+function barTexture(color) {
+  if (!barCache.has(color)) {
+    const c = document.createElement('canvas'); c.width = 8; c.height = 8;
+    const g = c.getContext('2d');
+    g.fillStyle = '#' + color.toString(16).padStart(6, '0');
+    g.fillRect(0, 0, 8, 8);
+    barCache.set(color, new THREE.CanvasTexture(c));
+  }
+  return barCache.get(color);
+}
 
 // ---- the humanoid ----------------------------------------------------------
 // One builder for cooks and customers: torso + hips + two-segment arms with

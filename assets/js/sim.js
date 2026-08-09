@@ -12,7 +12,7 @@ export const C = {
   PL_THROW_V: 9.5, PL_THROW_UP: 5.2, CARRY_RELEASE: 6, CARRY_MULT: 0.75, SOAK_T: 8, SOAK_MULT: 0.9,
   RENT: [520, 520, 1000, 1350, 1700], RENT_ZILLOW: 25,
   PAY: { flapjacks: 45, burger: 55, trout: 70, coffee: 15, matcha: 20 },
-  TIP_MAX: 0.5, PATIENCE: 75, DALE_AURA: 0.75, FIRE_PANIC: 3,
+  TIP_MAX: 0.5, PATIENCE: 105, DALE_AURA: 0.75, FIRE_PANIC: 3,
   COOK_T: { batter: 10, patty: 12, trout: 8 }, FLIP_LO: 4, FLIP_HI: 6,
   BURN_T: { batter: 12, patty: 12, trout: 7 }, IGNITE_T: 6,
   FIRE_SPREAD: 8, FIRE_CAP: 6, DOUSE_T: 1.8, SPRAY_RANGE: 2.8, SCORCH_T: 5,
@@ -21,7 +21,11 @@ export const C = {
   CREW_MULT: [0.65, 0.65, 1.0, 1.3, 1.6], PARTY_CAP_BASE: 2, PARTY_CAP_PER: 2,
   FLOCK_FAST: 45, FLOCK_BONUS_CAP: 3, SQUAT_AT: [90, 300], ZILLOW_AT: 150,
   ZILLOW_STAY: 120, ZILLOW_SPOT_T: 8, DALE_AT: 20, DALE_REFILL: 90, DALE_GIVEUP: 45,
-  QUEUE_GIVEUP: 40, GRACE: 60, SEATS: 4, MAXQ: 40, SHARD_TTL: 30, DEBRIS_CAP: 40,
+  QUEUE_GIVEUP: 55, GRACE: 60, SEATS: 4, MAXQ: 40, SHARD_TTL: 30, DEBRIS_CAP: 40,
+  // spills & the mop (last-local's dishfault/mop loop, diner edition).
+  // SPILL_SLIP sits ABOVE walk speed (4.2): a spill punishes RUNNING, not existing —
+  // at 3.4 it tripped walkers, and the economy bot died in its own dishpit puddle.
+  SPILL_CAP: 8, SPILL_R: 0.55, SPILL_SLIP: 4.8, SINK_BACKLOG: 6, SINK_DRIP: 18, MOP_R: 1.4, MOP_T: 0.45,
   SEASON_SHIFTS: 3, RENT_SCALE: 1.45, PREP_LEN: 30, CRED0: 20, GENT0: 10,
   CRED_DALE: 4, CRED_YEET: 2, CRED_CAPMULT: 0.3, GENT_ZILLOW: 8, GENT_FLOCK: 3, GENT_RENTMULT: 0.3,
   SUPPLY_LEN: 75, YARD_Z: 21.3, STOCK_CAP: 8,
@@ -114,6 +118,7 @@ export const LAYOUT = {
   sink: { x: 1.5, z: -6.1 }, bin: { x: 3.1, z: -6.1 },
   shelf: { x: -10.6, z: -6.1 },
   trayRack: { x: 2.6, z: -2.6 },  // east end of the pass, where the runner's loop starts
+  mopHook: { x: 2.3, z: -6.3 },   // between sink and bin — where a mop lives
   crates: [{ x: -11.3, z: -4.3, ing: 'batter' }, { x: -10.3, z: -4.3, ing: 'patty' }, { x: -9.3, z: -4.3, ing: 'trout' }],
   extHook: { x: 4.4, z: -6.3 },
   sign: { x: 9.2, z: 6.6 },
@@ -187,7 +192,13 @@ export class Sim {
     this.upgrades = [];
     this._larpDone = 0; this._kaleDone = 0; this._seqDone = 0; this._contagionNext = false;
     this.pstats = {};
+    this.spills = []; this.mopOut = false; this._sinkDrip = 0; this._sinkWarned = false;
     this.drcInit();
+  }
+  addSpill(x, z) {
+    this.spills.push({ id: this.nid(), x, z });
+    if (this.spills.length > C.SPILL_CAP) this.spills.shift();
+    this.push({ k: 'spill', x, z });
   }
   rentTarget() { return Math.round(C.RENT[this.crew()] * Math.pow(C.RENT_SCALE + (this.gent / 100) * C.GENT_RENTMULT, this.day - 1)); }
   bumpCred(n) { this.cred = Math.max(0, Math.min(100, this.cred + n)); }
@@ -783,11 +794,14 @@ export class Sim {
       if (p.wob >= C.WOB_TUMBLE) { this.tumble(p); }
     } else p.wob = Math.max(0, p.wob - dt * 2);
     p._pyaw = p.yaw;
-    // broken plates are a floor hazard at speed
+    // broken plates and spills are floor hazards at speed
     if (spd > C.SLIP_SPEED) {
       for (const it of this.items) {
         if (it.k !== 'shard' || it.holder) continue;
         if (d2(p.x, p.z, it.x, it.z) < 0.45 * 0.45) { this.slip(p); break; }
+      }
+      if (p.stunT <= 0 && spd > C.SPILL_SLIP) for (const s of this.spills) {
+        if (d2(p.x, p.z, s.x, s.z) < C.SPILL_R * C.SPILL_R) { this.slip(p); break; }
       }
     }
     if (this.ph === 'supply') {
@@ -937,6 +951,32 @@ export class Sim {
     for (const cr of LAYOUT.crates) if (this.near(p, cr) && !held) { const it = this.spawnItem('raw', cr.x, 1, cr.z, { ing: cr.ing }); it.holder = p.pid; p.held = it.id; return; }
     // 7. extinguisher hook
     if (this.near(p, LAYOUT.extHook) && !held && !this.extOut) { this.extOut = true; const ex = this.spawnItem('ext', p.x, 1, p.z); ex.holder = p.pid; p.held = ex.id; return; }
+    // 7a. the mop: grab it off the hook, mop the nearest spill (shards ride
+    // along free), hang it back up. The floor is a system now, not set dressing.
+    if (this.near(p, LAYOUT.mopHook) && !held && !this.mopOut) { this.mopOut = true; const mp2 = this.spawnItem('mop', p.x, 1, p.z); mp2.holder = p.pid; p.held = mp2.id; return; }
+    if (held && held.k === 'mop') {
+      if (this.near(p, LAYOUT.mopHook)) { this.removeItem(held.id); p.held = null; this.mopOut = false; return; }
+      let sp2 = null, sd2 = C.MOP_R * C.MOP_R;
+      for (const s of this.spills) { const dd = d2(p.x, p.z, s.x, s.z); if (dd < sd2) { sd2 = dd; sp2 = s; } }
+      if (sp2) {
+        p.busyT = C.MOP_T;
+        this.spills = this.spills.filter(s => s !== sp2);
+        // the mop head also takes any glass sitting in the puddle
+        this.items = this.items.filter(i => !(i.k === 'shard' && !i.holder && d2(i.x, i.z, sp2.x, sp2.z) < 1.0));
+        this.pst(p.seat).mo = (this.pst(p.seat).mo || 0) + 1;
+        this.push({ k: 'mopped', x: sp2.x, z: sp2.z, s: p.seat });
+        return;
+      }
+      // no spill in reach: the mop still sweeps loose shards
+      let sh2 = null, hd2 = C.MOP_R * C.MOP_R;
+      for (const it of this.items) { if (it.k !== 'shard' || it.holder) continue; const dd = d2(p.x, p.z, it.x, it.z); if (dd < hd2) { hd2 = dd; sh2 = it; } }
+      if (sh2) {
+        p.busyT = C.MOP_T * 0.6;
+        this.items = this.items.filter(i => !(i.k === 'shard' && !i.holder && d2(i.x, i.z, sh2.x, sh2.z) < 1.0));
+        this.push({ k: 'sweep', x: sh2.x, z: sh2.z });
+        return;
+      }
+    }
     // 7b. the tray rack: grab one empty-handed; return an empty tray to tidy up
     if (this.near(p, LAYOUT.trayRack, 1.0)) {
       if (!held && this.items.filter(i => i.k === 'tray').length < C.TRAY_WORLD) {
@@ -1389,6 +1429,15 @@ export class Sim {
     const washT = this.up('dishpit') ? C.WASH_T / 2 : C.WASH_T;
     const maxPlates = this.up('dishpit') ? C.PLATES + 4 : C.PLATES;
     if (sk.dirty > 0) { sk.washT += dt; if (sk.washT >= washT) { sk.washT = 0; sk.dirty--; this.st.shelf = Math.min(maxPlates, this.st.shelf + 1); this.push({ k: 'wash' }); } }
+    // a backed-up dishpit DRIPS: neglect the dishes and the floor turns lethal
+    if (sk.dirty > C.SINK_BACKLOG) {
+      if (!this._sinkWarned) { this._sinkWarned = true; this.push({ k: 'text', s: 'sink_backup' }); }
+      this._sinkDrip -= dt;
+      if (this._sinkDrip <= 0) {
+        this._sinkDrip = C.SINK_DRIP;
+        this.addSpill(LAYOUT.sink.x - 0.6 + this.r() * 1.2, LAYOUT.sink.z + 1.0 + this.r() * 0.8);
+      }
+    } else { this._sinkWarned = false; this._sinkDrip = Math.min(this._sinkDrip, 4); }
     for (const [k, v] of this.st.scorch) { const nv = v - dt; if (nv <= 0) this.st.scorch.delete(k); else this.st.scorch.set(k, nv); }
   }
   // the callout: ONE button that reads the room (last-local's C). Sim-side so
@@ -1448,6 +1497,7 @@ export class Sim {
             if ((it.k === 'plate' || it.k === 'dish' || it.k === 'mug' || it.k === 'dirty') && sp > C.BREAK_V) {
               if (it.ls != null) this.pst(it.ls).br++;
               this.push({ k: 'break', x: it.x, z: it.z, s: it.ls }); this.stats.broken++;
+              if (it.k === 'mug') this.addSpill(it.x, it.z);   // a mug is mostly liquid
               it.k = 'shard'; it.ttl = C.SHARD_TTL; it.vx = it.vz = it.vy = 0;
               this.queueReview('r_break');
             } else { it.vy = sp > 2 ? -it.vy * 0.3 : 0; if (it.vy < 0.4) it.vy = 0; it.vx *= 0.5; it.vz *= 0.5; }
@@ -1526,6 +1576,7 @@ export class Sim {
     this.squatDone = []; this.zillowDone = false; this.dale = null; this._daleGone = null;
     this._zpaid = 0; this._tx1 = 0; this._tx2 = 0; this._pendingOrder = new Map();
     this._larpDone = 0; this._kaleDone = 0; this._seqDone = 0;
+    this.spills = []; this.mopOut = false; this._sinkDrip = 0; this._sinkWarned = false;
     this.drcInit();
     if (this._contagionNext) { this.flockQ = C.CONTAGION_FLOCKS; this._contagionNext = false; this.push({ k: 'contagion' }); }
     this.reviews = []; this.rentE = this.carry;
@@ -1566,6 +1617,8 @@ export class Sim {
         sk: { d: this.st.sink.dirty, sh: this.st.shelf },
       },
       fi: this.fires.map(f => ({ x: R2(f.x), z: R2(f.z), hp: R2(f.hp) })),
+      spl: this.spills.map(s => ({ i: s.id, x: R2(s.x), z: R2(s.z) })),
+      mo: this.mopOut ? 1 : 0,
       tk: this.tickets.map(t => ({
         i: t.id, tb: t.table, sl: t.stool,
         ln: t.ln.map(l => ({ d: t.kale && !l.ok ? '?' : l.d, ok: l.ok ? 1 : 0 })),

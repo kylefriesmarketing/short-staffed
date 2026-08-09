@@ -171,6 +171,8 @@ export function sfx(k, x, z) {
     case 'callout': tone(880, 1174, 0.12, 'square', 0.12, x, z); setTimeout(() => tone(1174, 880, 0.14, 'square', 0.1, x, z), 130); break;
     case 'subok': tone(660, 880, 0.09, 'sine', 0.08, x, z); setTimeout(() => tone(990, 1320, 0.08, 'sine', 0.06, x, z), 90); break;
     case 'subfail': [220, 208].forEach((f, i) => setTimeout(() => tone(f, f * 0.96, 0.22, 'sawtooth', 0.1, x, z), i * 180)); break;
+    case 'spill': noise(0.25, 0.16, 300, 1100, x, z); tone(280, 160, 0.18, 'sine', 0.1, x, z, 'exp'); break;
+    case 'mopped': noise(0.5, 0.12, 400, 1600, x, z); setTimeout(() => noise(0.25, 0.08, 600, 2000, x, z), 200); break;
     case 'openfault': noise(0.2, 0.2, 1400, 4200); tone(2200, 1100, 0.14, 'square', 0.05); break;
     case 'busin': noise(0.8, 0.14, 200, 900); tone(155, 110, 0.5, 'sawtooth', 0.1, x, z, 'exp'); break;
     case 'buswarn': tone(233, 233, 0.18, 'sawtooth', 0.12); setTimeout(() => tone(233, 233, 0.18, 'sawtooth', 0.12), 240); break;

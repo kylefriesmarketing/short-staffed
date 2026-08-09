@@ -309,10 +309,13 @@ function applySnap(s) {
     $('rail').innerHTML = s.tk.map((t, ix) => {
       const who = t.kl ? STR.kaleTag : t.sq ? STR.seqTag : t.dale ? STR.daleTag : t.tb != null ? `${STR.tableTag} ${t.tb + 1}` : STR.stoolTag;
       const lines = t.ln.map(l => `<span class="ln ${l.ok ? 'done' : ''}">${l.d === '?' ? '❓' : STR.dishIcons[l.d]}</span>`).join('');
+      // names under the icons: reading the order off the picture alone was too hard
+      const names = t.ln.filter(l => !l.ok).map(l => l.d === '?' ? '???' : STR.dishShort[l.d]).join(' · ');
+      const nmRow = names ? `<div class="dnames">${names}</div>` : '';
       const riddle = t.kl && STR.riddles[t.rd] ? `<div class="riddle">${STR.riddles[t.rd]}</div>` : '';
       const pc = Math.round(t.pa * 100);
       const cls = (grew && ix === s.tk.length - 1 ? ' new' : '') + (pc < 25 ? ' urgent' : '') + (t.kl ? ' kale' : '') + (t.sq ? ' seq' : '');
-      return `<div class="tkt${cls}"><div class="who">${who}</div><div class="lns">${lines}</div>${riddle}<div class="pat"><i style="width:${pc}%;background:${pc > 50 ? '#5c9e4f' : pc > 25 ? '#e8b53a' : '#d94f38'}"></i></div></div>`;
+      return `<div class="tkt${cls}"><div class="who">${who}</div><div class="lns">${lines}</div>${nmRow}${riddle}<div class="pat"><i style="width:${pc}%;background:${pc > 50 ? '#5c9e4f' : pc > 25 ? '#e8b53a' : '#d94f38'}"></i></div></div>`;
     }).join('');
   }
 }
