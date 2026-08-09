@@ -10,46 +10,64 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
 <style>
   :root { --cream:#f3e5c8; --ink:#3a2c1c; --wood:#8a6844; --woodd:#5c4530; --teal:#8fb8ad; --red:#d94f38; --green:#5c9e4f; --gold:#e8b53a; --white:#fff6e8; }
   * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; overflow: hidden; background: #2c2016; font-family: "Trebuchet MS", Verdana, system-ui, sans-serif; color: var(--ink); }
+  html, body { height: 100%; overflow: hidden; background: #2c2016; font-family: Georgia, 'Times New Roman', serif; color: var(--ink); }
   canvas { display: block; }
   #dev { position: fixed; top: 4px; left: 4px; color: #0f0; font: 12px monospace; display: none; z-index: 60; text-shadow: 0 1px 2px #000; }
   .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 40; }
-  #lobby { background: linear-gradient(180deg, rgba(44,32,22,.55), rgba(44,32,22,.78)); flex-direction: column; gap: 14px; padding: 20px; text-align: center; }
-  #t-title { font-size: clamp(42px, 9vw, 92px); letter-spacing: .04em; color: var(--white); text-shadow: 0 4px 0 #a33d2a, 0 8px 24px rgba(0,0,0,.5); font-weight: 900; font-stretch: condensed; }
-  #t-tag { color: var(--cream); opacity: .95; font-size: clamp(13px, 2.4vw, 17px); max-width: 560px; }
-  #joinrow { display: flex; flex-direction: column; gap: 12px; align-items: center; background: var(--cream); border: 4px solid var(--woodd); border-radius: 16px; padding: 18px 22px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
-  #name { font-size: 18px; padding: 10px 12px; border: 3px solid var(--wood); border-radius: 10px; background: var(--white); width: 240px; text-align: center; }
-  #t-apron { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
-  #swatches { display: flex; gap: 10px; }
-  .swatch { width: 118px; border-radius: 12px; border: 3px solid rgba(0,0,0,.25); cursor: pointer; transition: transform .1s; padding: 8px 6px 7px; text-align: center; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
-  .swatch.sel { transform: scale(1.08); border-color: var(--ink); box-shadow: 0 0 0 3px var(--white); }
-  .swatch b { display: block; font-size: 15px; letter-spacing: .04em; }
-  .swatch i { display: block; font-size: 10px; font-style: normal; opacity: .92; margin: 1px 0 4px; }
-  .swatch s { display: block; font-size: 10px; text-decoration: none; background: rgba(0,0,0,.28); border-radius: 7px; padding: 3px 4px; line-height: 1.25; }
-  #join { font-size: 22px; font-weight: 900; letter-spacing: .06em; padding: 12px 34px; border: 0; border-radius: 12px; background: var(--red); color: var(--white); cursor: pointer; box-shadow: 0 5px 0 #a33d2a; }
-  #join:active { transform: translateY(3px); box-shadow: 0 2px 0 #a33d2a; }
-  #t-controls { color: var(--cream); font-size: 13px; opacity: .85; }
+  /* home page: THE LAST LOCAL's anatomy — dark radial room, one glowing panel,
+     serif title, character cards, a single warm CLOCK IN */
+  #lobby { background: radial-gradient(ellipse at 50% 35%, rgba(58,40,24,.93), rgba(24,16,10,.97)); flex-direction: column; gap: 0; padding: 20px; text-align: center; }
+  #joinrow { display: flex; flex-direction: column; gap: 11px; align-items: center; max-width: 700px; width: 94%; padding: 26px 30px 20px;
+             border: 1px solid rgba(232,181,58,.5); border-radius: 10px;
+             background: linear-gradient(180deg, rgba(46,32,20,.96), rgba(26,18,11,.98));
+             box-shadow: 0 0 60px rgba(232,181,58,.14), inset 0 0 40px rgba(0,0,0,.5); }
+  #t-title { font-size: clamp(34px, 6.4vw, 48px); letter-spacing: 5px; color: var(--gold); font-weight: 700;
+             text-shadow: 0 0 18px rgba(232,181,58,.55), 0 2px 0 #000; }
+  #t-tag { color: #c9a884; font-style: italic; font-size: clamp(12px, 2vw, 15px); margin-bottom: 4px; }
+  #name { font-size: 16px; padding: 8px 12px; border: 1px solid rgba(201,168,132,.45); border-radius: 6px;
+          background: rgba(24,16,10,.8); color: var(--cream); width: 240px; text-align: center; font-family: inherit; letter-spacing: 1px; }
+  #name::placeholder { color: rgba(201,168,132,.55); }
+  #t-apron { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #c9a884; margin-top: 3px; }
+  #swatches { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .swatch { width: 148px; border: 1px solid rgba(201,168,132,.35); border-radius: 8px; cursor: pointer;
+            background: rgba(58,40,24,.55); transition: all .15s; padding: 10px 8px; text-align: center; color: var(--cream); }
+  .swatch:hover { border-color: var(--gold); transform: translateY(-2px); }
+  .swatch.sel { border-color: var(--gold); background: rgba(232,181,58,.14); box-shadow: 0 0 14px rgba(232,181,58,.35); }
+  .swatch b { display: block; font-size: 16px; letter-spacing: .05em; }
+  .swatch i { display: block; color: #c9a884; font-size: 11px; margin: 2px 0 5px; }
+  .swatch s { display: block; font-size: 11px; text-decoration: none; color: var(--gold); line-height: 1.3; }
+  .swatch em { display: block; font-size: 10px; font-style: italic; color: rgba(244,235,221,.55); margin-top: 5px; line-height: 1.35; }
+  .swatch .sw { width: 15px; height: 15px; border-radius: 50%; margin: 5px auto 0; border: 1px solid rgba(0,0,0,.4); }
+  #join { font-family: inherit; font-size: 19px; letter-spacing: 2px; padding: 11px 34px; margin-top: 4px;
+          color: #241608; background: linear-gradient(180deg, #f0c569, var(--gold)); border: none; border-radius: 6px;
+          cursor: pointer; font-weight: bold; }
+  #join:hover { filter: brightness(1.1); }
+  #t-controls { color: rgba(244,235,221,.6); font-size: 12px; line-height: 1.7; margin-top: 6px; }
+  #t-controls b { color: var(--gold); }
+  /* after CLOCK IN the panel shrinks to the waiting room: hint + invite only */
+  #joinrow.joined #swatches, #joinrow.joined #name, #joinrow.joined #join { display: none; }
+  #hint { color: var(--gold); font-size: clamp(14px, 2.4vw, 17px); font-weight: 700; }
   #hint { color: var(--gold); font-size: clamp(14px, 2.6vw, 18px); font-weight: 700; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
   #invite { display: none; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; background: rgba(58,44,28,.85); border: 3px dashed var(--teal); border-radius: 12px; padding: 10px 14px; color: var(--cream); }
   #copy { font-size: 14px; font-weight: 800; padding: 8px 14px; border: 0; border-radius: 8px; background: var(--teal); color: #21332e; cursor: pointer; }
   #roomchip { color: var(--cream); font-size: 13px; letter-spacing: .12em; opacity: .9; }
   #hud { position: fixed; top: 10px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: flex-start; z-index: 30; pointer-events: none; flex-wrap: wrap; }
-  .chip { background: rgba(58,44,28,.88); color: var(--white); border-radius: 10px; padding: 7px 12px; font-size: 15px; font-weight: 700; border: 2px solid rgba(255,246,232,.18); }
+  .chip { background: rgba(26,18,11,.85); color: var(--cream); border-radius: 16px; padding: 6px 14px; font-size: 14px; font-weight: 700; border: 1px solid rgba(232,181,58,.4); letter-spacing: .5px; }
   .chip .dim { opacity: .65; font-weight: 400; }
   .chip.good { background: rgba(63,110,54,.92); }
   #clock { min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
   #rail { position: fixed; top: 56px; left: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 30; pointer-events: none; max-height: 55vh; overflow: hidden; }
-  .tkt { background: var(--white); border-left: 6px solid var(--gold); border-radius: 6px; padding: 5px 8px; width: 130px; box-shadow: 0 3px 8px rgba(0,0,0,.3); font-size: 12px; }
+  .tkt { background: var(--white); border-top: 6px solid var(--gold); border-radius: 4px 4px 8px 8px; padding: 5px 8px 6px; width: 132px; box-shadow: 2px 3px 8px rgba(0,0,0,.5); font-size: 12px; }
   .tkt .who { font-weight: 800; letter-spacing: .04em; font-size: 11px; opacity: .75; }
   .tkt .lns { font-size: 17px; letter-spacing: 2px; }
   .tkt .ln.done { opacity: .28; filter: grayscale(1); }
   .tkt .pat { height: 4px; background: rgba(0,0,0,.12); border-radius: 2px; margin-top: 3px; }
   .tkt .pat i { display: block; height: 100%; border-radius: 2px; }
-  .tkt.kale { width: 185px; border-left-color: #9caf88; }
-  .tkt.seq { border-left-color: #c47a5a; }
+  .tkt.kale { width: 185px; border-top-color: #9caf88; }
+  .tkt.seq { border-top-color: #c47a5a; }
   .tkt .riddle { font-size: 10.5px; font-style: italic; line-height: 1.25; opacity: .85; margin-top: 2px; }
   #toasts { position: fixed; top: 56px; right: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 35; align-items: flex-end; pointer-events: none; }
-  .toast { background: rgba(58,44,28,.92); color: var(--cream); padding: 9px 14px; border-radius: 10px; font-size: 14px; max-width: 300px; opacity: 0; transform: translateX(24px); transition: all .35s; border: 2px solid rgba(255,246,232,.15); }
+  .toast { background: rgba(26,18,11,.88); color: var(--cream); padding: 7px 12px; border-radius: 6px 0 0 6px; font-size: 13px; max-width: 300px; opacity: 0; transform: translateX(24px); transition: all .35s; border-right: 3px solid var(--teal); }
   .toast.show { opacity: 1; transform: none; }
   .toast.ll { background: #e7f0e3; color: #24321f; border-color: #9dbb92; font-style: italic; }
   .toast.money { background: rgba(63,110,54,.95); color: #eaffe2; font-weight: 800; }
@@ -155,23 +173,23 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
 <div id="toasts"></div>
 <div id="count"></div>
 <div class="overlay" id="lobby">
-  <div id="t-title"></div>
-  <div id="t-tag"></div>
   <div id="joinrow">
-    <input id="name" maxlength="16" autocomplete="off">
-    <div id="t-apron"></div>
+    <div id="t-title"></div>
+    <div id="t-tag"></div>
     <div id="swatches">
-      <div class="swatch" style="background:#d94f38"></div>
-      <div class="swatch" style="background:#3a76c4"></div>
-      <div class="swatch" style="background:#c49222"></div>
-      <div class="swatch" style="background:#5c9e4f"></div>
+      <div class="swatch" data-c="#d94f38"></div>
+      <div class="swatch" data-c="#3a76c4"></div>
+      <div class="swatch" data-c="#c49222"></div>
+      <div class="swatch" data-c="#5c9e4f"></div>
     </div>
+    <input id="name" maxlength="16" autocomplete="off">
+    <div id="t-apron" style="display:none"></div>
     <button id="join"></button>
+    <div id="hint"></div>
+    <div id="invite"><span id="t-invite"></span><button id="copy"></button></div>
+    <div id="roomchip"></div>
+    <div id="t-controls"></div>
   </div>
-  <div id="hint"></div>
-  <div id="invite"><span id="t-invite"></span><button id="copy"></button></div>
-  <div id="roomchip"></div>
-  <div id="t-controls"></div>
 </div>
 <div class="overlay" id="endcard">
   <div id="e-card">

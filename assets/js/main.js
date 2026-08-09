@@ -41,11 +41,12 @@ $('name').placeholder = STR.namePh;
 $('name').value = localStorage.getItem('ss-name') || '';
 $('t-apron').textContent = STR.pickApron;
 $('join').textContent = LOCAL ? STR.practice : STR.join;
-$('t-controls').textContent = ('ontouchstart' in window) ? STR.controlsTouch : STR.controls;
+$('t-controls').innerHTML = ('ontouchstart' in window) ? STR.controlsTouch
+  : STR.controls.split(' · ').map(s2 => s2.replace(/^(\S+)/, '<b>$1</b>')).join(' &nbsp;·&nbsp; ') + '<br>' + STR.motto;
 let myColor = +(localStorage.getItem('ss-color') || 0);
 document.querySelectorAll('.swatch').forEach((el, i) => {
   const emp = STR.employees[i];
-  el.innerHTML = `<b>${emp.n}</b><i>${emp.role}</i><s>${emp.ab}<br>${emp.d.replace('Q: ', '')}</s>`;
+  el.innerHTML = `<b>${emp.n}</b><i>${emp.role}</i><s>Q: ${emp.ab} — ${emp.d.replace('Q: ', '')}</s><em>${emp.stake}</em><span class="sw" style="background:${el.dataset.c}"></span>`;
   el.classList.toggle('sel', i === myColor);
   el.onclick = () => { myColor = i; localStorage.setItem('ss-color', i); document.querySelectorAll('.swatch').forEach((e2, j) => e2.classList.toggle('sel', j === i)); sfx('click'); };
 });
@@ -61,7 +62,7 @@ if (DEV) $('dev').style.display = 'block';
 function doJoin() {
   const name = ($('name').value || 'Cook').slice(0, 16);
   localStorage.setItem('ss-name', name);
-  $('joinrow').style.display = 'none';
+  $('joinrow').classList.add('joined'); // collapse the picker; the panel stays for hint + invite
   world = new World($('c'));
   world.fp = fpMode; world.look = look;
   setTimeout(lockPointer, 60);
