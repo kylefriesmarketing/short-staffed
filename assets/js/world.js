@@ -699,8 +699,20 @@ export class World {
       const fan = new THREE.Group();
       fan.add(mesh(GEO.cyl, M(PAL.woodDark), 0, 0.35, 0, 0.07, 0.7, 0.07));
       const hub = new THREE.Group();
-      hub.add(mesh(GEO.sph, M(PAL.woodDark), 0, 0, 0, 0.24, 0.14, 0.24));
-      for (let i = 0; i < 4; i++) hub.add(mesh(GEO.box, M(PAL.wood), Math.sin(i * Math.PI / 2) * 0.62, 0, Math.cos(i * Math.PI / 2) * 0.62, 0.24, 0.03, 1.0, 0, i * Math.PI / 2, 0));
+      hub.add(mesh(GEO.sph, M(PAL.woodDark), 0, 0, 0, 0.28, 0.16, 0.28));
+      // ⚠️ blades need PITCH: a dead-flat blade goes invisible edge-on twice a
+      // revolution and strobes — it reads as broken the moment it spins. Each
+      // blade lives in its own yaw group, offset radially, tipped ~14° about
+      // its long axis, with a wooden finger joining it to the hub.
+      for (let i = 0; i < 4; i++) {
+        const bg = new THREE.Group();
+        bg.rotation.y = i * Math.PI / 2;
+        const blade = mesh(GEO.box, M(PAL.wood), 0, 0, 0.66, 0.3, 0.035, 0.92);
+        blade.rotation.x = 0.24;
+        const arm = mesh(GEO.box, M(PAL.woodDark), 0, 0, 0.16, 0.07, 0.05, 0.34);
+        bg.add(blade, arm);
+        hub.add(bg);
+      }
       fan.add(hub); fan.position.set(fx, 2.6, fz);
       fan.userData.hub = hub;
       this.scene.add(fan); this.fans.push(fan);
@@ -1174,6 +1186,7 @@ export class World {
     if (e.k === 'subok') this.emote('🤫', e.x, e.z);
     if (e.k === 'subfail') this.emote('😤', e.x, e.z);
     if (e.k === 'callout') { const ic = { fire: '🔥', bus: '🚌', squat: '🧳', hands: '🆘', table: '🗒️', mess: '🧹', plates: '🍽️', need: '🙋' }[e.w] || '🙋'; this.emote(ic, e.x, e.z); }
+    if (e.k === 'ability') { const ic = { hazel: '🏠', buck: '💪', june: '⚡', reed: '🎵' }[e.e] || '✨'; this.emote(ic, e.x, e.z); }
     if (e.k === 'chime') this.doorT = 1.15;
     if (e.k === 'cha') this.moneyPop('+$' + e.a, e.x, e.z);
     if (e.k === 'order') { const pos = e.tb != null ? LAYOUT.tables[e.tb] : (e.st != null ? LAYOUT.stools[e.st] : null); if (pos) this.emote('📝', pos.x, pos.z); }
@@ -1405,7 +1418,7 @@ export class World {
     if (Math.random() < 0.3) for (const [, v] of this.slotFood) if (v.state === 'cook' || v.state === 'ready') this.puff(this.steam, v.g.position.x + (Math.random() - 0.5) * 0.3, 1.25, v.g.position.z, { life: 1.2, v: 0.2, vy: 0.8, s: 0.13 });
     if (Math.random() < 0.09) this.puff(this.steam, Math.random() < 0.5 ? -2.9 : -2.1, 2.0, -6.15, { life: 1.5, v: 0.12, vy: 0.55, s: 0.1 });
     // ---- the life layer -------------------------------------------------------
-    for (const f of this.fans) f.userData.hub.rotation.y += dt * 3.4;
+    for (const f of this.fans) f.userData.hub.rotation.y += dt * 2.4; // lazy diner speed
     const mp = this.motes.geometry.attributes.position;
     for (let i = 0; i < mp.count; i++) {
       mp.array[i * 3] += Math.sin(t * 0.4 + this.moteSeed[i]) * dt * 0.05;

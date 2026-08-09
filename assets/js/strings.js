@@ -4,7 +4,14 @@ export const STR = {
   tagline: 'The last real diner in Elkhorn, Montana. Pop. 743 and falling.',
   join: 'CLOCK IN',
   namePh: 'Your name',
-  pickApron: 'Pick an apron',
+  pickApron: 'Pick your cook',
+  employees: [
+    { n: 'HAZEL', role: 'The Owner', ab: 'House Rules', d: 'Q: the angriest table forgives everything.' },
+    { n: 'BUCK', role: 'Ranch Kid', ab: 'Big Hands', d: 'Q: 10s of full-speed hauling. The tray cannot spill.' },
+    { n: 'JUNE', role: 'Line Cook', ab: 'Short Order', d: 'Q: everything on the heat is instantly ready. Mostly.' },
+    { n: 'REED', role: 'Busker', ab: 'The Yodel', d: 'Q: every table finds a little more patience.' },
+  ],
+  abReady: 'Q — ', abWait: 's',
   invite: 'Send this link to your crew:',
   copy: 'COPY LINK',
   copied: 'Copied!',
@@ -91,6 +98,12 @@ export const STR = {
   },
   supplyChip: '🌆',
   supplyLabels: { river: 'RIVER — CAST HERE', berries: 'HUCKLEBERRIES', truck: 'BANK STOCK', phone: 'SYSCO PHONE ($80)' },
+  abilityLines: {
+    hazel: '🏠 {N}: HOUSE RULES. The table forgives.',
+    buck: '💪 {N} rolled up their sleeves.',
+    june: '⚡ {N} called SHORT ORDER. It is all ready. Mostly.',
+    reed: '🎵 {N} yodels. The room softens.',
+  },
   blame: {
     break_: '{N} broke a plate.',
     ignite: '🔥 {N} started the grease fire.',

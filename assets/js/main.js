@@ -44,6 +44,8 @@ $('join').textContent = LOCAL ? STR.practice : STR.join;
 $('t-controls').textContent = ('ontouchstart' in window) ? STR.controlsTouch : STR.controls;
 let myColor = +(localStorage.getItem('ss-color') || 0);
 document.querySelectorAll('.swatch').forEach((el, i) => {
+  const emp = STR.employees[i];
+  el.innerHTML = `<b>${emp.n}</b><i>${emp.role}</i><s>${emp.ab}<br>${emp.d.replace('Q: ', '')}</s>`;
   el.classList.toggle('sel', i === myColor);
   el.onclick = () => { myColor = i; localStorage.setItem('ss-color', i); document.querySelectorAll('.swatch').forEach((e2, j) => e2.classList.toggle('sel', j === i)); sfx('click'); };
 });
@@ -132,6 +134,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE' || e.code === 'Enter') { input.a++; input.ah = true; e.preventDefault(); }
   if (e.code === 'Space') { input.th++; e.preventDefault(); }
   if (e.code === 'KeyC') { input.co = (input.co || 0) + 1; e.preventDefault(); }
+  if (e.code === 'KeyQ') { input.ab = (input.ab || 0) + 1; e.preventDefault(); }
   if (e.code === 'KeyV') {
     fpMode = !fpMode;
     if (world) world.fp = fpMode;
@@ -301,6 +304,15 @@ function applySnap(s) {
     $('stock').textContent = `🐟 ${st2.t} · 🫐 ${st2.h}`;
     $('stock').style.display = (st2.t + st2.h > 0 || s.ph === 'supply') ? '' : 'none';
   }
+  // your ability chip (outside hudKey — the cooldown ticks every second)
+  const meP = mySeat >= 0 && s.pl.find(q => q.i === mySeat);
+  if (meP && (s.ph === 'shift' || s.ph === 'count' || s.ph === 'close')) {
+    const emp = STR.employees[myColor % 4];
+    $('abchip').style.display = '';
+    if (meP.bf) { $('abchip').className = 'chip buff'; $('abchip').textContent = `💪 ${emp.ab}!`; }
+    else if (meP.at > 0) { $('abchip').className = 'chip'; $('abchip').textContent = `${emp.ab} · ${meP.at}${STR.abWait}`; }
+    else { $('abchip').className = 'chip ready'; $('abchip').textContent = `${STR.abReady}${emp.ab}`; }
+  } else $('abchip').style.display = 'none';
   // rail
   const rk = JSON.stringify(s.tk);
   if (rk !== railKey) {
@@ -459,6 +471,7 @@ function onEvent(e) {
   if (e.k === 'text' && STR.texts[e.s]) toast(STR.texts[e.s], e.s.startsWith('ll_') || e.s === 'zillow_out' ? 'll' : '');
   if (e.k === 'tg' && STR.telegraphs[e.s]) toast(STR.telegraphs[e.s], 'tg');
   if (e.k === 'callout' && STR.callouts[e.w]) toast('📣 ' + nameOf(e.s) + ': ' + STR.callouts[e.w], 'tg');
+  if (e.k === 'ability' && STR.abilityLines[e.e]) toast(STR.abilityLines[e.e].replace('{N}', nameOf(e.s)), 'money');
   if (e.k === 'tip') toast(`tip +$${e.a}`, 'money');
   if (e.k === 'picked' && STR.specials[e.s]) toast(STR.pickedToast + STR.specials[e.s].n, 'll');
   if (e.k === 'bought' && STR.upgrades[e.u]) toast(STR.boughtToast + STR.upgrades[e.u].n, 'money');
@@ -520,14 +533,14 @@ function computeInput() {
   input.x = x; input.z = z;
   input.sp = sprintKey || padSprint || touchMag > 1.35;
   if (world) { world.look = look; world.sprinting = input.sp && l > 0.1; }
-  if (net) { net.input.x = input.x; net.input.z = input.z; net.input.fx = input.fx; net.input.fz = input.fz; net.input.a = input.a; net.input.th = input.th; net.input.ah = input.ah; net.input.sp = input.sp; net.input.co = input.co; }
+  if (net) { net.input.x = input.x; net.input.z = input.z; net.input.fx = input.fx; net.input.fz = input.fz; net.input.a = input.a; net.input.th = input.th; net.input.ah = input.ah; net.input.sp = input.sp; net.input.co = input.co; net.input.ab = input.ab; }
 }
 function stepLocal(dt) {
   if (!LOCAL || !localSim) return;
   localAcc += dt;
   while (localAcc >= C.TICK) {
     localAcc -= C.TICK;
-    localSim.input('me', { x: input.x, z: input.z, fx: input.fx, fz: input.fz, a: input.a, th: input.th, ah: input.ah, sp: input.sp, co: input.co });
+    localSim.input('me', { x: input.x, z: input.z, fx: input.fx, fz: input.fz, a: input.a, th: input.th, ah: input.ah, sp: input.sp, co: input.co, ab: input.ab });
     const evs = localSim.tick(C.TICK);
     for (const e of evs) onEvent(e);
     if (++localTick % 2 === 0) applySnap(localSim.snapshot());

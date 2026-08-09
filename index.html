@@ -21,8 +21,11 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   #name { font-size: 18px; padding: 10px 12px; border: 3px solid var(--wood); border-radius: 10px; background: var(--white); width: 240px; text-align: center; }
   #t-apron { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
   #swatches { display: flex; gap: 10px; }
-  .swatch { width: 44px; height: 44px; border-radius: 12px; border: 3px solid rgba(0,0,0,.25); cursor: pointer; transition: transform .1s; }
-  .swatch.sel { transform: scale(1.18); border-color: var(--ink); box-shadow: 0 0 0 3px var(--white); }
+  .swatch { width: 118px; border-radius: 12px; border: 3px solid rgba(0,0,0,.25); cursor: pointer; transition: transform .1s; padding: 8px 6px 7px; text-align: center; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+  .swatch.sel { transform: scale(1.08); border-color: var(--ink); box-shadow: 0 0 0 3px var(--white); }
+  .swatch b { display: block; font-size: 15px; letter-spacing: .04em; }
+  .swatch i { display: block; font-size: 10px; font-style: normal; opacity: .92; margin: 1px 0 4px; }
+  .swatch s { display: block; font-size: 10px; text-decoration: none; background: rgba(0,0,0,.28); border-radius: 7px; padding: 3px 4px; line-height: 1.25; }
   #join { font-size: 22px; font-weight: 900; letter-spacing: .06em; padding: 12px 34px; border: 0; border-radius: 12px; background: var(--red); color: var(--white); cursor: pointer; box-shadow: 0 5px 0 #a33d2a; }
   #join:active { transform: translateY(3px); box-shadow: 0 2px 0 #a33d2a; }
   #t-controls { color: var(--cream); font-size: 13px; opacity: .85; }
@@ -53,6 +56,8 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   .toast.fire { background: #d94f38; color: #fff; font-weight: 900; }
   .toast.tg { background: #2c2416; color: #ffd98a; border-color: #a8842f; font-style: italic; } /* director telegraphs */
   .tkt .dnames { font-size: 11px; font-weight: 700; color: #4a3a28; letter-spacing: .02em; margin-top: 1px; }
+  #abchip.ready { background: #3f6e36; color: #eaffe2; }
+  #abchip.buff { background: #c49222; color: #2c2416; }
   #count { position: fixed; inset: 0; display: none; z-index: 45; pointer-events: none; text-align: center; font-size: 30vh; font-weight: 900; color: var(--white); text-shadow: 0 10px 40px rgba(0,0,0,.6); line-height: 100vh; }
   #endcard { background: rgba(30,22,14,.82); flex-direction: column; gap: 10px; padding: 18px; display: none; z-index: 50; }
   #e-card { background: var(--cream); border: 5px solid var(--woodd); border-radius: 18px; padding: 22px 26px; max-width: 460px; width: 100%; max-height: 92vh; overflow: auto; box-shadow: 0 16px 50px rgba(0,0,0,.6); }
@@ -139,6 +144,7 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   <div class="chip meter" id="cred"></div>
   <div class="chip meter" id="gent"></div>
   <div class="chip" id="stock" style="display:none"></div>
+  <div class="chip" id="abchip" style="display:none"></div>
   <div class="chip" id="mic" style="display:none;pointer-events:auto;cursor:pointer"></div>
 </div>
 <div id="firevig"></div>
@@ -157,7 +163,7 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
     <div id="swatches">
       <div class="swatch" style="background:#d94f38"></div>
       <div class="swatch" style="background:#3a76c4"></div>
-      <div class="swatch" style="background:#e8b53a"></div>
+      <div class="swatch" style="background:#c49222"></div>
       <div class="swatch" style="background:#5c9e4f"></div>
     </div>
     <button id="join"></button>

@@ -46,7 +46,16 @@ export const C = {
   SUB_PAY: 0.8, SUB_CRED: 3, SUB_PATIENCE: 18,
   // help-up + barge (the crew is solid; your friends are load-bearing)
   HELPUP_CUT: 0.8, BARGE_SPEED: 4.6, BARGE_STUN: 0.7,
+  // employee abilities (last-local §employees: pick who you are, Q is yours)
+  AB_REED_PAT: 25, AB_JUNE_SAD: 0.25, AB_BUCK_T: 10,
 };
+// the crew: apron colour = who you are. Q fires the ability, one cooldown each.
+export const EMPLOYEES = [
+  { key: 'hazel', cd: 50 },  // The Owner — House Rules: the angriest table forgives everything
+  { key: 'buck', cd: 45 },   // Ranch Kid — Big Hands: 10s of full-speed carrying, spill-proof tray
+  { key: 'june', cd: 55 },   // Line Cook — Short Order: everything on the heat is instantly ready. Mostly.
+  { key: 'reed', cd: 60 },   // Busker — The Yodel: every table finds a little more patience
+];
 // ── THE DIRECTOR (ported from THE LAST LOCAL, bible §12) ────────────────────
 // The shift stops being a flat spawn curve and gains dramaturgy: named phases,
 // an intensity budget that buys pressure events, ≤2 disaster families at once,
@@ -230,6 +239,7 @@ export class Sim {
       stack: [], wob: 0, stunT: 0, carriedBy: -1, heldPl: -1, air: null, y: 0, soakT: 0, carryT: 0,
       slideX: 0, slideZ: 0, svx: 0, svz: 0,
       in: { x: 0, z: 0, ah: false, sp: false, fx: 0, fz: -1 }, aSeen: 0, thSeen: 0, aPend: 0, thPend: 0,
+      abT: 0, buffT: 0,
       conn: true, graceT: 0,
     };
     this.players.set(pid, p);
@@ -248,10 +258,11 @@ export class Sim {
     p.in.x = x; p.in.z = z; p.in.ah = !!m.ah; p.in.sp = !!m.sp;
     const fx = f(m.fx), fz = f(m.fz), fl = Math.hypot(fx, fz);
     if (fl > 0.3) { p.in.fx = fx / fl; p.in.fz = fz / fl; }
-    const a = m.a | 0, th = m.th | 0, co = m.co | 0;
+    const a = m.a | 0, th = m.th | 0, co = m.co | 0, ab = m.ab | 0;
     if (a > p.aSeen) { p.aPend += Math.min(4, a - p.aSeen); p.aSeen = a; }
     if (th > p.thSeen) { p.thPend += Math.min(4, th - p.thSeen); p.thSeen = th; }
     if (co > (p.coSeen || 0)) { p.coPend = (p.coPend || 0) + Math.min(2, co - (p.coSeen || 0)); p.coSeen = co; }
+    if (ab > (p.abSeen || 0)) { p.abPend = (p.abPend || 0) + Math.min(2, ab - (p.abSeen || 0)); p.abSeen = ab; }
   }
   again() { if (this.ph === 'over') { const keep = [...this.players.values()]; this.reset(); for (const p of keep) if (p.conn) this.join(p.pid, p.name, p.color); this.push({ k: 'start' }); } }
 
@@ -751,6 +762,8 @@ export class Sim {
     if (p.soakT > 0) p.soakT -= dt;
     if (p.heldPl >= 0) { p.carryT -= dt; if (p.carryT <= 0) this.releaseFriend(p, false); }
     if (p.coT > 0) p.coT -= dt;
+    if (p.abT > 0) p.abT -= dt;
+    if (p.buffT > 0) p.buffT -= dt;
     if (p.stunT > 0) {
       p.stunT -= dt; p.aPend = 0; p.thPend = 0; p.spray = false;
       p.x += p.slideX * dt; p.z += p.slideZ * dt;
@@ -762,11 +775,12 @@ export class Sim {
     }
     if (p.busyT > 0) { p.busyT -= dt; p.aPend = 0; p.thPend = 0; return; }
     let mult = 1;
-    if (p.heldPl >= 0) mult *= C.CARRY_MULT;
-    else if (p.heldCu) mult *= C.DRAG_MULT;
+    const bigHands = p.buffT > 0; // Buck's moment: nothing slows him, nothing spills
+    if (p.heldPl >= 0 && !bigHands) mult *= C.CARRY_MULT;
+    else if (p.heldCu && !bigHands) mult *= C.DRAG_MULT;
     if (p.soakT > 0) mult *= C.SOAK_MULT;
     const heldTray = !!(p.held && this.itemOf(p.held)?.k === 'tray');
-    if (heldTray) mult *= C.TRAY_SLOW - p.stack.length * C.TRAY_LOAD_SLOW;
+    if (heldTray && !bigHands) mult *= C.TRAY_SLOW - p.stack.length * C.TRAY_LOAD_SLOW;
     const sprint = p.in.sp && p.heldPl < 0;
     if (sprint) mult *= C.SPRINT_MULT;
     const tx = p.in.x * C.COOK_SPEED * mult, tz = p.in.z * C.COOK_SPEED * mult;
@@ -785,7 +799,7 @@ export class Sim {
     const spd = Math.hypot(p.svx, p.svz);
     if (heldTray) {
       p.wob = Math.max(0, p.wob - dt * 2);
-      if (p.stack.length > 0 && sprint && spd > C.COOK_SPEED * 1.1 && this.r() < C.TRAY_FUMBLE * dt) this.trayDump(p);
+      if (p.stack.length > 0 && sprint && spd > C.COOK_SPEED * 1.1 && !bigHands && this.r() < C.TRAY_FUMBLE * dt) this.trayDump(p);
     } else if (p.stack.length > 0) {
       let turn = (p.yaw - (p._pyaw ?? p.yaw)) % (Math.PI * 2);
       if (turn > Math.PI) turn -= Math.PI * 2; if (turn < -Math.PI) turn += Math.PI * 2;
@@ -813,6 +827,7 @@ export class Sim {
     while (p.aPend > 0) { p.aPend--; this.doInteract(p); }
     while (p.thPend > 0) { p.thPend--; this.doThrow(p); }
     while ((p.coPend || 0) > 0) { p.coPend--; this.doCallout(p); }
+    while ((p.abPend || 0) > 0) { p.abPend--; this.doAbility(p); }
     if (p.spray) this.doSpray(p, dt);
   }
   clampPlayer(p) {
@@ -1440,6 +1455,42 @@ export class Sim {
     } else { this._sinkWarned = false; this._sinkDrip = Math.min(this._sinkDrip, 4); }
     for (const [k, v] of this.st.scorch) { const nv = v - dt; if (nv <= 0) this.st.scorch.delete(k); else this.st.scorch.set(k, nv); }
   }
+  // employee abilities (Q): your apron decides who you are. Cooldown always
+  // spends on a real firing; the effect is the character's whole identity.
+  doAbility(p) {
+    if (p.abT > 0 || this.ph !== 'shift') return;
+    const emp = EMPLOYEES[p.color % 4];
+    let fired = false;
+    if (emp.key === 'hazel') {
+      // House Rules: the angriest open ticket forgives everything
+      let worst = null;
+      for (const tk of this.tickets) if (!worst || tk.pat < worst.pat) worst = tk;
+      if (worst) { worst.pat = C.PATIENCE; fired = true; }
+    } else if (emp.key === 'buck') {
+      p.buffT = C.AB_BUCK_T; fired = true;
+    } else if (emp.key === 'june') {
+      // Short Order: everything on the heat is instantly ready. Mostly.
+      for (const stName of ['griddle', 'pan']) {
+        const slots = this.st[stName];
+        for (const s of slots) {
+          if (!s || s.st !== 'cook') continue;
+          s.cookT = C.COOK_T[s.ing];
+          if (this.r() < C.AB_JUNE_SAD) s.flipped = false; // the side effect
+          else s.flipped = true;
+          fired = true;
+        }
+      }
+    } else if (emp.key === 'reed') {
+      // The Yodel: the whole room finds a little more patience
+      for (const tk of this.tickets) tk.pat = Math.min(C.PATIENCE, tk.pat + C.AB_REED_PAT);
+      for (const cu of this.cust) if (cu.st === 'enter') cu.giveT = Math.min(C.QUEUE_GIVEUP, (cu.giveT || 0) + 15);
+      fired = this.tickets.length > 0 || this.cust.some(c => c.st === 'enter');
+    }
+    if (!fired) return; // nothing to act on — keep the cooldown
+    p.abT = emp.cd;
+    this.pst(p.seat).ab = (this.pst(p.seat).ab || 0) + 1;
+    this.push({ k: 'ability', s: p.seat, e: emp.key, x: p.x, z: p.z });
+  }
   // the callout: ONE button that reads the room (last-local's C). Sim-side so
   // every client sees the same beacon; the priority order is the danger order.
   doCallout(p) {
@@ -1583,7 +1634,7 @@ export class Sim {
     for (const p of this.players.values()) {
       p.held = null; p.heldCu = null; p.busyT = 0; p.spray = false;
       p.stack = []; p.wob = 0; p.stunT = 0; p.carriedBy = -1; p.heldPl = -1; p.air = null; p.y = 0; p.soakT = 0;
-      p.slideX = 0; p.slideZ = 0; p.svx = 0; p.svz = 0; p.coT = 0;
+      p.slideX = 0; p.slideZ = 0; p.svx = 0; p.svz = 0; p.coT = 0; p.abT = 0; p.buffT = 0;
     }
   }
 
@@ -1602,6 +1653,7 @@ export class Sim {
         fx: R2(p.in.fx), fz: R2(p.in.fz), h: p.held ? this.itemMini(p.held) : null,
         xs: p.stack.map(id => this.itemMini(id)).filter(Boolean),
         wb: R2(p.wob), sn: p.stunT > 0 ? 1 : 0, cb: p.carriedBy, ar: p.air ? 1 : 0, so: p.soakT > 0 ? 1 : 0,
+        at: Math.ceil(Math.max(0, p.abT)), bf: p.buffT > 0 ? 1 : 0,
         dc: p.heldCu ? 1 : 0, b: p.busyT > 0 ? 1 : 0, sp: p.spray ? 1 : 0, off: p.conn ? 0 : 1,
         mv: Math.hypot(p.in.x, p.in.z) > 0.1 ? 1 : 0, fs: p.biteT > 0 ? 2 : (p.cast ? 1 : 0),
       })),
