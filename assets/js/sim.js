@@ -127,7 +127,7 @@ export const LAYOUT = {
   sink: { x: 1.5, z: -6.1 }, bin: { x: 3.1, z: -6.1 },
   shelf: { x: -10.6, z: -6.1 },
   trayRack: { x: 2.6, z: -2.6 },  // east end of the pass, where the runner's loop starts
-  mopHook: { x: 2.3, z: -6.3 },   // between sink and bin — where a mop lives
+  mopHook: { x: 4.5, z: -4.4 },   // the mop BUCKET: its own open corner, no competing verbs in reach
   crates: [{ x: -11.3, z: -4.3, ing: 'batter' }, { x: -10.3, z: -4.3, ing: 'patty' }, { x: -9.3, z: -4.3, ing: 'trout' }],
   extHook: { x: 4.4, z: -6.3 },
   sign: { x: 9.2, z: 6.6 },

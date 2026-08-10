@@ -139,7 +139,7 @@ export const STR = {
     'Make RENT by close. Ridgeline Capital is "so grateful."',
     'MOUSE looks · E grabs/uses · SPACE throws · SHIFT sprints · C shouts',
     'The TRAY (east end of the counter) hauls three at a walk. Sprinting it is a bet.',
-    'Spills slip anyone at speed. The MOP hangs by the sink.',
+    'Spills slip runners. The MOP stands in the yellow bucket, kitchen corner.',
     'Yes, you can pick up your coworkers. SPACE throws them too.',
   ],
   vcOff: '🎤 voice', vcOn: '🎤 LIVE', vcErr: '🎤 blocked', vcConn: '🎤 …',

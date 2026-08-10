@@ -613,10 +613,20 @@ export class World {
     this.plateStack = mesh(GEO.cyl, M(PAL.white), LAYOUT.shelf.x, 1.4, LAYOUT.shelf.z - 0.5, 0.62, 0.5, 0.62);
     this.dirtyStack = mesh(GEO.cyl, M(0xb8a27e), LAYOUT.sink.x - 0.35, 1.1, LAYOUT.sink.z - 0.3, 0.5, 0.3, 0.5);
     this.extMesh = this.buildItem({ k: 'ext' }); this.extMesh.position.set(LAYOUT.extHook.x, 1.35, -6.8);
-    // the mop on its hook (visible whenever nobody carried it off)
+    // the mop BUCKET station: a yellow janitor bucket out in the open where
+    // nothing else competes for the E press — the mop stands in it when home
+    const bucket = new THREE.Group();
+    bucket.position.set(LAYOUT.mopHook.x, 0, LAYOUT.mopHook.z);
+    bucket.add(mesh(GEO.cyl, M(0xe8b53a, { r: 0.6 }), 0, 0.24, 0, 0.56, 0.48, 0.56));
+    bucket.add(mesh(GEO.cyl, M(0xc49222), 0, 0.47, 0, 0.6, 0.05, 0.6));
+    bucket.add(mesh(GEO.cyl, M(0x35424e, { r: 0.3 }), 0, 0.45, 0, 0.46, 0.03, 0.46)); // grey water
+    bucket.add(mesh(GEO.box, M(0xb0b6bc, { r: 0.4, m: 0.5 }), 0, 0.5, 0.26, 0.34, 0.1, 0.14)); // wringer
+    bucket.add(blob(0.4));
+    castAll(bucket);
+    this.scene.add(bucket);
     this.mopMesh = stripBlob(this.buildItem({ k: 'mop' }));
-    this.mopMesh.position.set(LAYOUT.mopHook.x, 0.55, LAYOUT.mopHook.z - 0.45);
-    this.mopMesh.rotation.z = 0.14;
+    this.mopMesh.position.set(LAYOUT.mopHook.x - 0.08, 0.3, LAYOUT.mopHook.z + 0.05);
+    this.mopMesh.rotation.z = 0.3; this.mopMesh.rotation.x = -0.12;
     this.scene.add(this.plateStack, this.dirtyStack, this.extMesh, this.mopMesh);
     this.spillMeshes = new Map();
     this.bubbles = new Map();

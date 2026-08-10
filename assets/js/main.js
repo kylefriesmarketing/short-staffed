@@ -45,7 +45,10 @@ $('t-controls').innerHTML = ('ontouchstart' in window) ? STR.controlsTouch
   : STR.controls.split(' · ').map(s2 => s2.replace(/^(\S+)/, '<b>$1</b>')).join(' &nbsp;·&nbsp; ') + '<br>' + STR.motto;
 let myColor = +(localStorage.getItem('ss-color') || 0);
 document.querySelectorAll('.swatch').forEach((el, i) => {
-  const emp = STR.employees[i];
+  // never render a blank card: if a cached strings.js predates the cast,
+  // the names still show (Pages caches assets ~10 min across deploys)
+  const emp = (STR.employees && STR.employees[i])
+    || { n: ['HAZEL', 'BUCK', 'JUNE', 'REED'][i], role: '', ab: 'Special', d: 'ability on Q.', stake: '' };
   el.innerHTML = `<b>${emp.n}</b><i>${emp.role}</i><s>Q: ${emp.ab} — ${emp.d.replace('Q: ', '')}</s><em>${emp.stake}</em><span class="sw" style="background:${el.dataset.c}"></span>`;
   el.classList.toggle('sel', i === myColor);
   el.onclick = () => { myColor = i; localStorage.setItem('ss-color', i); document.querySelectorAll('.swatch').forEach((e2, j) => e2.classList.toggle('sel', j === i)); sfx('click'); };
@@ -498,7 +501,7 @@ function updateHighlight() {
     LAYOUT.huckBushes.forEach((b2, i) => { if (lastSnap.bu && lastSnap.bu[i] > 0) cands.push([b2.x, b2.z, C.REACH]); });
     cands.push([LAYOUT.truck.x, LAYOUT.truck.z, 2.6], [LAYOUT.payphone.x, LAYOUT.payphone.z, 1.7]);
   }
-  else for (const sp of [...LAYOUT.griddle.slots, ...LAYOUT.pan.slots, ...LAYOUT.taps, LAYOUT.sink, LAYOUT.bin, LAYOUT.shelf, ...LAYOUT.crates, LAYOUT.extHook, LAYOUT.trayRack]) cands.push([sp.x, sp.z, C.REACH]);
+  else for (const sp of [...LAYOUT.griddle.slots, ...LAYOUT.pan.slots, ...LAYOUT.taps, LAYOUT.sink, LAYOUT.bin, LAYOUT.shelf, ...LAYOUT.crates, LAYOUT.extHook, LAYOUT.trayRack, LAYOUT.mopHook]) cands.push([sp.x, sp.z, C.REACH]);
   for (const it of lastSnap.it) if (it.k !== 'shard') cands.push([it.x, it.z, C.REACH]);
   for (const cu of lastSnap.cu) if (cu.ty === 'squatter' && ['squat', 'reseat', 'sit', 'wait'].includes(cu.st)) cands.push([cu.x, cu.z, C.REACH]);
   for (const t of lastSnap.tk) { const pos = t.tb != null ? LAYOUT.tables[t.tb] : LAYOUT.stools[t.sl]; if (pos) cands.push([pos.x, pos.z, t.tb != null ? 2.3 : C.REACH]); }
