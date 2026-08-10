@@ -32,6 +32,8 @@ export const STR = {
   // six tracks + attributed swings (the aftermath card)
   trk: { cash: '💵 RENT', hosp: '🍽️ HOSPITALITY', cred: '🤝 LOCAL CRED', gent: '🏙️ GENTRIFICATION', heat: '🚨 HEAT', chaos: '🐷 CHAOS' },
   swingsHead: 'The night, attributed',
+  botRow: '🤝 Hazel helps (solo practice: she cooks, serves, washes, douses)',
+  phases: { compression: 'THE RUSH', break: 'THE BREAK POINT', last_call: 'LAST CALL' },
   swings: {
     sv: '{N} served {C} plates.',
     td: '{N} lost the WHOLE tray ×{C}.',

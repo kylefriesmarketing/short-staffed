@@ -299,7 +299,9 @@ export class Sim {
   again() { if (this.ph === 'over') { const keep = [...this.players.values()]; this.reset(); for (const p of keep) if (p.conn) this.join(p.pid, p.name, p.color); this.push({ k: 'start' }); } }
 
   push(e) { this.ev.push(e); }
-  crew() { return Math.max(1, Math.min(4, [...this.players.values()].filter(p => p.conn).length)); }
+  // Hazel doesn't count: the bot is a HELPER — rent, spawn rate and party
+  // caps all stay at the human crew size, so solo+Hazel is strictly kinder
+  crew() { return Math.max(1, Math.min(4, [...this.players.values()].filter(p => p.conn && !p.bot).length)); }
 
   // ---- tick -----------------------------------------------------------------
   tick(dt) {
@@ -331,6 +333,7 @@ export class Sim {
       if (this.prep.t <= 0 && this.prep.picked == null) this.pick(this.ri(this.prep.offer.length));
     }
     const order = [...this.players.values()].sort((a, b) => a.seat - b.seat);
+    for (const p of order) if (p.bot && p.conn) this.botThink(p, dt);
     for (const p of order) this.tickPlayer(p, dt);
     // carried friends ride the carrier; everyone else gets personal space (barely)
     for (const p of order) {
@@ -1665,6 +1668,213 @@ export class Sim {
     p.abT = emp.cd;
     this.pst(p.seat).ab = (this.pst(p.seat).ab || 0) + 1;
     this.push({ k: 'ability', s: p.seat, e: emp.key, x: p.x, z: p.z });
+  }
+  // ── HAZEL, THE SOLO HELPER (last-local's temp bot, diner edition) ─────────
+  // A sim-internal deterministic teammate: cooks, serves, washes, douses,
+  // mops. Runs server-side like any seat, so MP/snapshots need nothing new.
+  addBot() {
+    if ([...this.players.values()].some(p => p.bot)) return;
+    const seat = this.join('bot:hazel', 'HAZEL', 0);
+    if (seat < 0) return;
+    const p = this.players.get('bot:hazel');
+    p.bot = true; p.task = null; p.thinkT = 0;
+    return seat;
+  }
+  // ⚠️ contract: (tx,tz) is the ACTUAL interactable and `stop` must sit inside
+  // interaction reach — arrival means "a press from here lands". The counter
+  // solids stop the body at the counter face exactly like they do for humans.
+  botSteer(p, tx, tz, stop = 1.25) {
+    const ax = tx - p.x, az = tz - p.z, ad = Math.hypot(ax, az);
+    if (ad > 0.01) { p.in.fx = ax / ad; p.in.fz = az / ad; }
+    if (ad <= stop) { p.in.x = 0; p.in.z = 0; return true; }
+    let wx = tx, wz = tz;
+    // route through the counter gap when crossing sides (the soak router, sim-side)
+    if ((p.z > -2.6) !== (tz > -2.6)) {
+      if (Math.abs(p.x - 6.35) > 0.75) { wx = 6.35; wz = p.z; }
+      else { wx = 6.35; wz = tz > -2.6 ? -1.2 : -4.0; }
+    }
+    const dx = wx - p.x, dz = wz - p.z, d = Math.hypot(dx, dz);
+    p.in.x = d > 0.001 ? dx / d : 0; p.in.z = d > 0.001 ? dz / d : 0;
+    return false;
+  }
+  botPress(p) { p.aPend++; }
+  botThink(p, dt) {
+    if (this.ph !== 'shift' && this.ph !== 'close') { p.in.x = 0; p.in.z = 0; p.task = null; return; }
+    if (p.stunT > 0 || p.carriedBy >= 0 || p.air) { p.task = null; return; }
+    // unstick: pushing but not moving means a solid is in the way — commit to
+    // a perpendicular sidestep (alternating sides) until the path clears.
+    // Generic beats mapping every counter and crate island by hand.
+    if (p._sideT > 0) { p._sideT -= dt; p.in.x = p._sx; p.in.z = p._sz; return; }
+    if (Math.hypot(p.in.x, p.in.z) > 0.1) {
+      const moved = Math.hypot(p.x - (p._lx ?? p.x), p.z - (p._lz ?? p.z));
+      p._stuckT = moved < 0.012 ? (p._stuckT || 0) + dt : 0;
+    } else p._stuckT = 0;
+    p._lx = p.x; p._lz = p.z;
+    if ((p._stuckT || 0) > 0.45) {
+      p._stuckT = 0; p._flip = !p._flip;
+      const s = p._flip ? 1 : -1;
+      p._sx = -p.in.z * s; p._sz = p.in.x * s; p._sideT = 0.6;
+      p.in.x = p._sx; p.in.z = p._sz;
+      return;
+    }
+    // watchdog: no task is worth more than 25 seconds of Hazel's night
+    if (p.task) { p._taskT = (p._taskT || 0) + dt; if (p._taskT > 25) { p.task = null; p._taskT = 0; } }
+    else p._taskT = 0;
+    const held = p.held ? this.itemOf(p.held) : null;
+    // hard interrupt: fire beats everything
+    if (this.fires.length && (!p.task || p.task.k !== 'fire') && !(held && ['dish', 'mug'].includes(held.k))) p.task = { k: 'fire' };
+    p.thinkT -= dt;
+    if (!p.task) { if (p.thinkT > 0) { p.in.x = 0; p.in.z = 0; return; } p.thinkT = 0.35; p.task = this.botPick(p, held); }
+    const T = p.task;
+    if (!T) { this.botSteer(p, -1, -4.2, 0.6); return; } // idle at the pass
+    const drop = () => { p.task = null; p.thinkT = 0.2; };
+    // hands full of the wrong thing: park breakables gently, toss the rest
+    const unhand = () => {
+      if (held && ['dish', 'mug'].includes(held.k)) p.task = { k: 'matchserve' };
+      else if (held && held.k === 'plate') p.task = { k: 'park' };
+      else p.thPend++;
+    };
+    if (T.k === 'fire') {
+      if (!this.fires.length) { if (held && held.k === 'ext') { if (this.botSteer(p, LAYOUT.extHook.x, LAYOUT.extHook.z + 1.0, 0.5)) this.botPress(p); } else drop(); return; }
+      if (!held) { if (this.botSteer(p, LAYOUT.extHook.x, LAYOUT.extHook.z + 1.0, 0.5)) this.botPress(p); return; }
+      if (held.k !== 'ext') { p.aPend = 0; p.thPend++; return; } // no time for niceties
+      const f = this.fires[0];
+      p.in.ah = true;
+      this.botSteer(p, f.x, f.z + 1.5, 0.6);
+      const dx2 = f.x - p.x, dz2 = f.z - p.z, dd2 = Math.hypot(dx2, dz2);
+      if (dd2 > 0.01) { p.in.fx = dx2 / dd2; p.in.fz = dz2 / dd2; }
+      return;
+    }
+    p.in.ah = false;
+    if (T.k === 'park') {
+      if (!held) { drop(); return; }
+      if (this.botSteer(p, LAYOUT.pass[3].x, LAYOUT.pass[3].z + 1.0, 0.45)) { this.botPress(p); drop(); }
+      return;
+    }
+    if (T.k === 'serve') {
+      const tk = this.tickets.find(t => t.id === T.tk);
+      if (!tk || !held || !['dish', 'mug'].includes(held.k)) { drop(); return; }
+      const pos = tk.table != null ? LAYOUT.tables[tk.table] : LAYOUT.stools[tk.stool];
+      if (!pos) { drop(); return; }
+      if (this.botSteer(p, pos.x, pos.z + (tk.table != null ? 1.5 : 0.9), 0.55)) { this.botPress(p); drop(); }
+      return;
+    }
+    if (T.k === 'plate') { // shelf → plate in hand → takeready
+      if (held && held.k === 'plate') { p.task = { k: 'takeready', st: T.st, si: T.si }; return; }
+      if (held) { unhand(); return; }
+      if (this.botSteer(p, LAYOUT.shelf.x, LAYOUT.shelf.z + 1.05, 0.42)) { this.botPress(p); }
+      return;
+    }
+    if (T.k === 'takeready') {
+      const slot = this.st[T.st][T.si];
+      if (!slot || slot.st === 'burnt') { drop(); return; }
+      if (held && held.k === 'dish') { p.task = { k: 'matchserve' }; return; }
+      if (!held || held.k !== 'plate') { p.task = { k: 'plate', st: T.st, si: T.si }; return; }
+      const sp = LAYOUT[T.st].slots[T.si];
+      if (this.botSteer(p, sp.x, sp.z + 1.05, 0.42)) this.botPress(p);
+      return;
+    }
+    if (T.k === 'matchserve') { // holding food: find who wants it
+      if (!held || !['dish', 'mug'].includes(held.k)) { drop(); return; }
+      const kind = held.k === 'dish' ? held.dish : held.fill;
+      const tk = this.tickets.find(t => t.ln.some(l => !l.ok && l.d === kind));
+      if (!tk) { // nobody wants it: park it on the pass
+        if (this.botSteer(p, LAYOUT.pass[2].x, LAYOUT.pass[2].z + 1.0, 0.45)) { this.botPress(p); drop(); }
+        return;
+      }
+      p.task = { k: 'serve', tk: tk.id };
+      return;
+    }
+    if (T.k === 'cookraw') {
+      const cfg = LAYOUT[T.st];
+      if (this.st[T.st][T.si]) { drop(); return; } // someone beat us to the burner
+      if (held && held.k === 'raw' && held.ing === T.ing) {
+        const sp = cfg.slots[T.si];
+        if (this.botSteer(p, sp.x, sp.z + 1.05, 0.42)) { this.botPress(p); drop(); }
+        return;
+      }
+      if (held) { unhand(); return; }
+      const cr = LAYOUT.crates.find(c => c.ing === T.ing);
+      // ⚠️ crates from the NORTH: from the south the shelf outranks them on E
+      if (this.botSteer(p, cr.x, cr.z + 1.05, 0.42)) this.botPress(p);
+      return;
+    }
+    if (T.k === 'flip') {
+      const slot = this.st[T.st][T.si];
+      if (!slot || slot.flipped || slot.st !== 'cook') { drop(); return; }
+      const sp = LAYOUT[T.st].slots[T.si];
+      if (this.botSteer(p, sp.x, sp.z + 1.05, 0.42)) { this.botPress(p); drop(); }
+      return;
+    }
+    if (T.k === 'pour') {
+      if (held && held.k === 'mug') { p.task = { k: 'matchserve' }; return; }
+      if (held) { unhand(); return; }
+      const tap = LAYOUT.taps[T.ti];
+      if (this.botSteer(p, tap.x, tap.z + 1.05, 0.42)) { if (this.st.taps[T.ti] <= 0) this.botPress(p); }
+      return;
+    }
+    if (T.k === 'dirty') {
+      const it = this.itemOf(T.id);
+      if (held && held.k === 'dirty') { if (this.botSteer(p, LAYOUT.sink.x, LAYOUT.sink.z + 1.05, 0.42)) { this.botPress(p); drop(); } return; }
+      if (!it || it.holder) { drop(); return; }
+      if (held) { unhand(); return; }
+      if (this.botSteer(p, it.x, it.z, 0.9)) this.botPress(p);
+      return;
+    }
+    if (T.k === 'mop') {
+      if (!this.spills.length) { if (held && held.k === 'mop') { if (this.botSteer(p, LAYOUT.mopHook.x, LAYOUT.mopHook.z + 0.75, 0.4)) this.botPress(p); } else drop(); return; }
+      if (!held) { if (this.botSteer(p, LAYOUT.mopHook.x, LAYOUT.mopHook.z + 0.75, 0.4)) this.botPress(p); return; }
+      if (held.k !== 'mop') { unhand(); return; }
+      const s = this.spills[0];
+      if (this.botSteer(p, s.x, s.z, C.MOP_R - 0.35)) this.botPress(p);
+      return;
+    }
+    drop();
+  }
+  botPick(p, held) {
+    // holding something servable? deal with it first
+    if (held && ['dish', 'mug'].includes(held.k)) return { k: 'matchserve' };
+    if (held && held.k === 'dirty') return { k: 'dirty', id: held.id };
+    // a batter in its flip window
+    for (const stName of ['griddle', 'pan']) {
+      const slots = this.st[stName];
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        if (s && s.st === 'cook' && s.ing === 'batter' && !s.flipped && s.cookT >= C.FLIP_LO && s.cookT <= C.FLIP_HI - 0.5) return { k: 'flip', st: stName, si: i };
+      }
+    }
+    // something READY on the heat
+    for (const stName of ['griddle', 'pan']) {
+      const slots = this.st[stName];
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        if (s && (s.st === 'ready' || (s.st === 'cook' && s.flipped && s.cookT > C.COOK_T[s.ing] * 0.8))) return { k: 'plate', st: stName, si: i };
+      }
+    }
+    // an unfilled ticket line: drinks first (fast), then food onto a burner
+    for (const tk of this.tickets) {
+      for (const l of tk.ln) {
+        if (l.ok) continue;
+        if (l.d === 'coffee' || l.d === 'matcha') {
+          const ti = l.d === 'coffee' ? 0 : 1;
+          if (this.st.taps[ti] <= 0) return { k: 'pour', ti };
+          continue;
+        }
+        const ing = { flapjacks: 'batter', burger: 'patty', trout: 'trout' }[l.d];
+        if (!ing) continue;
+        const stName = ING_STATION[ing];
+        const cfg = LAYOUT[stName];
+        for (let i = 0; i < cfg.slots.length; i++) {
+          if (stName === 'pan' && i === 1 && !this.up('pan2')) continue;
+          if (!this.st[stName][i]) return { k: 'cookraw', st: stName, si: i, ing };
+        }
+      }
+    }
+    // housekeeping: dirty plates → sink; spills → mop
+    const dirty = this.items.find(i => i.k === 'dirty' && !i.holder);
+    if (dirty) return { k: 'dirty', id: dirty.id };
+    if (this.spills.length >= 2) return { k: 'mop' };
+    return null;
   }
   // ── THE PIGS ───────────────────────────────────────────────────────────────
   updatePigs(dt) {

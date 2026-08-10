@@ -188,6 +188,8 @@ export function sfx(k, x, z) {
     case 'pigyeet': tone(760, 1080, 0.3, 'sawtooth', 0.16, x, z); break;  // squeeeee
     case 'pigate': noise(0.18, 0.12, 300, 900, x, z); setTimeout(() => noise(0.14, 0.1, 260, 800, x, z), 160); break;
     case 'pighome': tone(440, 560, 0.1, 'sawtooth', 0.1, x, z); setTimeout(() => tone(560, 480, 0.12, 'sawtooth', 0.09, x, z), 120); break;
+    // phase turn: a low timpani hit + a rising swell — the night changes gear
+    case 'phase': tone(98, 96, 0.7, 'sine', 0.3); noise(0.5, 0.1, 60, 300); setTimeout(() => tone(147, 196, 0.5, 'triangle', 0.14), 240); break;
     case 'openfault': noise(0.2, 0.2, 1400, 4200); tone(2200, 1100, 0.14, 'square', 0.05); break;
     case 'busin': noise(0.8, 0.14, 200, 900); tone(155, 110, 0.5, 'sawtooth', 0.1, x, z, 'exp'); break;
     case 'buswarn': tone(233, 233, 0.18, 'sawtooth', 0.12); setTimeout(() => tone(233, 233, 0.18, 'sawtooth', 0.12), 240); break;

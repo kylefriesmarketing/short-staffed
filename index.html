@@ -83,6 +83,16 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
                max-width: 92vw; overflow: hidden; pointer-events: none; display: none; }
   #objective b { color: var(--gold); }
   #objective.hot { border-color: var(--red); color: #ffd6cc; }
+  /* danger vignette: reddening edges on one honest score */
+  #dangervig { position: fixed; inset: 0; pointer-events: none; z-index: 24; opacity: 0;
+               transition: opacity .6s; box-shadow: inset 0 0 140px 40px rgba(217,60,38,.55); }
+  /* phase cards: the director's turns, announced */
+  #phasecard { position: fixed; top: 30%; left: 50%; transform: translateX(-50%); z-index: 36;
+               font-size: clamp(28px, 5vw, 44px); letter-spacing: 6px; color: var(--gold); font-weight: 700;
+               text-shadow: 0 0 22px rgba(232,181,58,.6), 0 2px 0 #000; opacity: 0; pointer-events: none; }
+  #phasecard.show { animation: pcard 2.2s ease forwards; }
+  @keyframes pcard { 0% { opacity: 0; transform: translateX(-50%) scale(.92); } 12% { opacity: 1; transform: translateX(-50%) scale(1); }
+                     78% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(1.03); } }
   /* six tracks + attributed swings on the season card */
   #e-tracks { margin: 8px 0 2px; }
   .etr { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .06em; color: #6b5a44; margin: 3px 0; }
@@ -188,6 +198,8 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   <div class="chip" id="mic" style="display:none;pointer-events:auto;cursor:pointer"></div>
 </div>
 <div id="firevig"></div>
+<div id="dangervig"></div>
+<div id="phasecard"></div>
 <div id="objective"></div>
 <div id="bite">❗</div>
 <div id="cross"></div>
@@ -207,6 +219,7 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
     </div>
     <input id="name" maxlength="16" autocomplete="off">
     <div id="t-apron" style="display:none"></div>
+    <label id="botrow" style="display:none"><input type="checkbox" id="botcheck"> <span id="t-bot"></span></label>
     <button id="join"></button>
     <div id="hint"></div>
     <div id="invite"><span id="t-invite"></span><button id="copy"></button></div>
@@ -245,6 +258,6 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
 <div class="tbtn" id="btnA">A</div>
 <div class="tbtn" id="btnB">✋</div>
 <div id="dev"></div>
-<script type="module" src="./assets/js/main.js?v=r9"></script>
+<script type="module" src="./assets/js/main.js?v=r10"></script>
 </body>
 </html>

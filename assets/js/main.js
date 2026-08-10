@@ -1,6 +1,6 @@
 // SHORT STAFFED — client boot, input (keyboard/touch/gamepad), prediction,
 // HUD/DOM overlays, and the ?local=1 offline practice mode.
-import { Sim, C, LAYOUT, SOLIDS, UPGRADES } from './sim.js';
+import { Sim, C, LAYOUT, SOLIDS, UPGRADES, DIR } from './sim.js';
 import { World } from './world.js';
 import { STR } from './strings.js';
 import { Net } from './net.js';
@@ -54,6 +54,13 @@ document.querySelectorAll('.swatch').forEach((el, i) => {
   el.onclick = () => { myColor = i; localStorage.setItem('ss-color', i); document.querySelectorAll('.swatch').forEach((e2, j) => e2.classList.toggle('sel', j === i)); sfx('click'); };
 });
 $('join').onclick = () => { audioInit(); doJoin(); };
+// Hazel helps: solo practice only (the room server seats humans)
+if (LOCAL) {
+  $('botrow').style.display = 'flex';
+  $('t-bot').textContent = STR.botRow;
+  $('botcheck').checked = qs.get('bot') === '1' || localStorage.getItem('ss-bot') === '1';
+  $('botcheck').onchange = () => localStorage.setItem('ss-bot', $('botcheck').checked ? '1' : '0');
+}
 $('copy').textContent = STR.copy;
 $('copy').onclick = async () => {
   try { await navigator.clipboard.writeText(location.href); $('copy').textContent = STR.copied; setTimeout(() => $('copy').textContent = STR.copy, 1400); } catch {}
@@ -72,6 +79,7 @@ function doJoin() {
   if (LOCAL) {
     localSim = new Sim((Date.now() / 1000 | 0) % 100000);
     mySeat = localSim.join('me', name, myColor);
+    if ($('botcheck').checked) localSim.addBot();
     joined = true;
     $('invite').style.display = 'none';
     $('hint').textContent = STR.waiting;
@@ -311,6 +319,26 @@ function applySnap(s) {
   }
   // the objective line: one sentence, the single most worth-doing thing (§34 order)
   updateObjective(s);
+  // phase cards: the director's structure, FELT (a card + a sting per turn)
+  if (s.ph === 'shift') {
+    const phase = DIR.phases.find(q => s.t >= q.start && s.t < q.end)?.id || 'last_call';
+    if (phase !== lastPhase) {
+      if (lastPhase !== null && STR.phases[phase]) {
+        $('phasecard').textContent = STR.phases[phase];
+        $('phasecard').classList.remove('show'); void $('phasecard').offsetWidth;
+        $('phasecard').classList.add('show');
+        sfx('phase');
+      }
+      lastPhase = phase;
+    }
+  } else lastPhase = s.ph === 'lobby' || s.ph === 'count' ? null : lastPhase;
+  // danger vignette: the edges redden on ONE honest danger score
+  let danger = Math.min(1, s.fi.length * 0.4);
+  danger += Math.min(0.3, (s.tk || []).filter(t => t.pa < 0.25 && !t.dale).length * 0.15);
+  danger += Math.min(0.3, ((s.pg || []).filter(q => q.in).length) * 0.15);
+  if (s.bt > 0 && s.bt <= C.BUS_WARN) danger += 0.25;
+  if (s.cu.some(c => c.ty === 'inspector' && !['leave', 'out'].includes(c.st)) && ((s.spl || []).length || s.fi.length)) danger += 0.2;
+  $('dangervig').style.opacity = Math.min(1, danger) * 0.6;
   // your ability chip (outside hudKey — the cooldown ticks every second)
   const meP = mySeat >= 0 && s.pl.find(q => q.i === mySeat);
   if (meP && meP.h && meP.h.k === 'gun') {
@@ -412,7 +440,7 @@ function updateLabels() {
   }
 }
 
-let _objHtml = '';
+let _objHtml = '', lastPhase = null;
 function updateObjective(s) {
   const el = $('objective');
   let html = '', hot = false;
