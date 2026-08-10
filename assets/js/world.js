@@ -884,6 +884,7 @@ export class World {
       kale: { shirt: 0x9caf88, pants: 0x6a6a62, shoe: 0xd8d2c8, hair: 0x4a3a2c, bun: true, glasses: 0xc9a227, brow: 0x4a3a2c, mouth: 0.1 },
       sequoia: { shirt: 0xc47a5a, pants: 0x2c3038, shoe: PAL.white, hair, pony: true, vest: 0xf2ece2, hat: 'band', hatC: 0xe8e2d6, mouth: 0.11 },
       larper: { shirt: 0x7a4a8a, pants: PAL.denim, shoe: 0x5a3a24, hair, hat: 'cowboy', hatC: 0xd8bc8a, brow: 0x5a4030, mouth: 0.12 },
+      inspector: { shirt: 0x8a8a76, pants: 0x4a4f5c, shoe: 0x2c2620, hair: 0x4a3a2c, glasses: 0x3a3f4a, mouth: 0.08, brow: 0x3a2c20 },
     }[ty] || { shirt: PAL.gray, pants: 0x4a5a6a, shoe: 0x3a2f28, hair, brow: 0x5a4030 };
     const g = human(Object.assign({ skin }, K));
     const u = g.userData;
@@ -906,6 +907,15 @@ export class World {
       const cam = mesh(GEO.box, M(0x3a3f4a, { r: 0.3, m: 0.4 }), 0, -0.52, 0.08, 0.12, 0.22, 0.04);
       const scr = mesh(GEO.box, M(0xbfe8ff, { e: 0.9 }), 0, -0.52, 0.055, 0.1, 0.19, 0.01);
       u.armR.add(cam, scr);
+    }
+    if (ty === 'inspector') {                                  // the clipboard, mid-note
+      u.armL.rotation.x = -1.15;
+      const cb = mesh(GEO.box, M(0xe8e2d4, { r: 0.9 }), 0, -0.52, 0.12, 0.26, 0.32, 0.03);
+      cb.rotation.x = 0.5;
+      const pen = mesh(GEO.box, M(0xc49222), 0.1, -0.5, 0.16, 0.03, 0.14, 0.03);
+      pen.rotation.x = 0.5;
+      u.armL.add(cb, pen);
+      u.armLFixed = true;
     }
     if (ty === 'zillow' && id % 2 === 0) u.armR.rotation.x = -1.35; // pointing at the fixtures
     return castAll(g);
@@ -1366,7 +1376,7 @@ export class World {
         const armFixed = u.ty === 'sequoia' || u.ty === 'flock' || u.ty === 'zillow';
         if (walking) {
           g.position.y += Math.abs(Math.sin(u.ph)) * 0.05;
-          u.armL.rotation.x = Math.sin(u.ph) * 0.5;
+          if (!u.armLFixed) u.armL.rotation.x = Math.sin(u.ph) * 0.5;
           if (!armFixed) u.armR.rotation.x = -Math.sin(u.ph) * 0.5;
           setLegs(u, Math.sin(u.ph) * 0.62, -Math.sin(u.ph) * 0.62, lerpK, true);
         } else {
@@ -1390,6 +1400,9 @@ export class World {
           u.armR.rotation.x = -1.9 + Math.sin(t * 2.3 + u.ph) * 0.07; // scrolling
         } else if (u.ty === 'sequoia') {
           u.armR.rotation.x = -2.5 + Math.sin(t * 1.1) * 0.05;        // panning the shot
+        } else if (u.ty === 'inspector') {
+          u.armL.rotation.x = -1.15 + Math.sin(t * 9 + u.ph) * 0.04;  // scribbling, always
+          u.armR.rotation.x = Math.max(u.armR.rotation.x, -0.4);
         }
       }
       if (u.hat) u.hat.rotation.z += ((d.yh ? 0.45 : 0) - u.hat.rotation.z) * lerpK; // the yee-haw tips the hat

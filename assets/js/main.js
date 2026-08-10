@@ -323,7 +323,7 @@ function applySnap(s) {
     railKey = rk;
     const grew = s.tk.length > prevTkCount; prevTkCount = s.tk.length;
     $('rail').innerHTML = s.tk.map((t, ix) => {
-      const who = t.kl ? STR.kaleTag : t.sq ? STR.seqTag : t.dale ? STR.daleTag : t.tb != null ? `${STR.tableTag} ${t.tb + 1}` : STR.stoolTag;
+      const who = t.ins ? STR.inspTag : t.kl ? STR.kaleTag : t.sq ? STR.seqTag : t.dale ? STR.daleTag : t.tb != null ? `${STR.tableTag} ${t.tb + 1}` : STR.stoolTag;
       const lines = t.ln.map(l => `<span class="ln ${l.ok ? 'done' : ''}">${l.d === '?' ? '❓' : STR.dishIcons[l.d]}</span>`).join('');
       // names under the icons: reading the order off the picture alone was too hard
       const names = t.ln.filter(l => !l.ok).map(l => l.d === '?' ? '???' : STR.dishShort[l.d]).join(' · ');

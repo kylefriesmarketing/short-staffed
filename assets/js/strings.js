@@ -49,6 +49,7 @@ export const STR = {
     kale_in: 'Kale (his real name) is ready to order. Entirely off-menu.',
     seq_in: '🤳 Sequoia is here. She is already filming your flat-top.',
     sink_backup: '🧼 The dishpit is backing up. The floor is about to get interesting.',
+    insp_in: '🗒️ A man with a clipboard has seated himself. He is already writing.',
   },
   riddles: {
     flapjacks: '"A deconstructed stack narrative. Huckleberry-forward. ZERO seed oils."',
@@ -83,6 +84,10 @@ export const STR = {
     busin: '🚌 A TOUR BUS. Three parties, one departure clock. Feed them before it honks.',
     buswarn: '🚌 The bus is idling. They leave SOON.',
     bushonk: '🚌 HONK. The bus rolls out.',
+    inspsaw: '🗒️ The inspector saw that.',
+    insppass: '🗒️ PASSED. "Surprisingly compliant." He leaves a card.',
+    inspwarn: '🗒️ WARNING issued. "Improvement expected." No fine. This time.',
+    inspcite: '🗒️ CITED. The county takes its cut, and the paper hears about it.',
   },
   // director telegraphs — every pressure event announces itself ~4s early
   telegraphs: {
@@ -96,6 +101,7 @@ export const STR = {
     spurs_jingle: '👢 Boots on the porch. The good kind.',
     yodel_radio: '🤠 Someone out front is practicing a yee-haw.',
     kale_text: '📱 "omw. tell the chef to be brave." — unknown number',
+    clipboard: '🗒️ Someone at the door is writing before they have even sat down…',
   },
   supplyChip: '🌆',
   supplyLabels: { river: 'RIVER — CAST HERE', berries: 'HUCKLEBERRIES', truck: 'BANK STOCK', phone: 'SYSCO PHONE ($80)' },
@@ -160,6 +166,9 @@ export const STR = {
     r_seq_fire: { s: 2, t: '“there was an open flame situation but honestly? the char content went CRAZY”' },
     r_larper: { s: 5, t: '“Feller behind the counter gave me a genuine yee-haw. Best dang burger west of the pass.”' },
     r_sub_caught: { s: 1, t: '“I ordered the trout. This is a BURGER with a leaf on it. They think we can\'t tell.”' },
+    r_inspect_pass: { s: 5, t: '“Routine inspection. Floors clean, coffee black, staff… enthusiastic. Pass. — County Health”' },
+    r_inspect_warn: { s: 3, t: '“Cited for ambience-related hazards. The flapjacks are, regrettably, excellent. — County Health”' },
+    r_inspect_fail: { s: 1, t: '“Glass. Standing liquid. A man went PAST MY TABLE, airborne. Citation issued. — County Health”' },
   },
 
   endWin: 'YOU MADE IT TO LABOR DAY',
@@ -207,6 +216,7 @@ export const STR = {
   again: 'NEXT SHIFT',
   backToLobby: 'The crew gathers for another day…',
 
-  archetypes: { flock: 'The Flock', squatter: 'Zoom Squatter', zillow: 'Zillow Couple', dale: 'Rancher Dale', camper: 'Tourist', kale: 'Kale (his real name)', sequoia: 'Sequoia', larper: 'The Ranch LARPer' },
+  archetypes: { flock: 'The Flock', squatter: 'Zoom Squatter', zillow: 'Zillow Couple', dale: 'Rancher Dale', camper: 'Tourist', kale: 'Kale (his real name)', sequoia: 'Sequoia', larper: 'The Ranch LARPer', inspector: 'The Health Inspector' },
+  inspTag: '🗒️ INSPECTOR',
   stations: { griddle: 'GRIDDLE', pan: 'PAN', taps: 'DRINKS', sink: 'SINK', shelf: 'PLATES', pantry: 'PANTRY', bin: 'TRASH', ext: 'FIRE EXT.' },
 };

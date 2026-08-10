@@ -174,6 +174,10 @@ export function sfx(k, x, z) {
     case 'spill': noise(0.25, 0.16, 300, 1100, x, z); tone(280, 160, 0.18, 'sine', 0.1, x, z, 'exp'); break;
     case 'mopped': noise(0.5, 0.12, 400, 1600, x, z); setTimeout(() => noise(0.25, 0.08, 600, 2000, x, z), 200); break;
     case 'ability': [0, 4, 9].forEach((s2, i) => setTimeout(() => tone(659 * Math.pow(2, s2 / 12), 0, 0.16, 'triangle', 0.13), i * 90)); break;
+    case 'inspsaw': tone(2400, 2000, 0.05, 'square', 0.07); setTimeout(() => tone(2200, 1900, 0.06, 'square', 0.06), 80); break; // pencil scratch
+    case 'insppass': [0, 4, 7].forEach((s2, i) => setTimeout(() => tone(784 * Math.pow(2, s2 / 12), 0, 0.18, 'triangle', 0.12), i * 110)); break;
+    case 'inspwarn': tone(392, 370, 0.3, 'sawtooth', 0.09); break;
+    case 'inspcite': [311, 294, 233].forEach((f, i) => setTimeout(() => tone(f, f * 0.97, 0.3, 'sawtooth', 0.11), i * 220)); break;
     case 'openfault': noise(0.2, 0.2, 1400, 4200); tone(2200, 1100, 0.14, 'square', 0.05); break;
     case 'busin': noise(0.8, 0.14, 200, 900); tone(155, 110, 0.5, 'sawtooth', 0.1, x, z, 'exp'); break;
     case 'buswarn': tone(233, 233, 0.18, 'sawtooth', 0.12); setTimeout(() => tone(233, 233, 0.18, 'sawtooth', 0.12), 240); break;

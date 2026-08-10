@@ -48,6 +48,11 @@ export const C = {
   HELPUP_CUT: 0.8, BARGE_SPEED: 4.6, BARGE_STUN: 0.7,
   // employee abilities (last-local §employees: pick who you are, Q is yours)
   AB_REED_PAT: 25, AB_JUNE_SAD: 0.25, AB_BUCK_T: 10,
+  // the health inspector (last-local's quiet stranger): he grades the floor
+  // from the moment he sits until he cashes out
+  INSP_STAY: 70, INSP_PASS: 25, INSP_CITE: 60, INSP_FINE: 45,
+  INSP_CRED_PASS: 6, INSP_CRED_WARN: 2, INSP_CRED_FAIL: 5, INSP_GENT_FAIL: 3,
+  INSP_REFUSED: 30, INSP_SAW: 15,
 };
 // the crew: apron colour = who you are. Q fires the ability, one cooldown each.
 export const EMPLOYEES = [
@@ -78,7 +83,7 @@ export const DIR = {
   prepFault: 10,        // "something is already broken": shards at open
   headline: {           // guaranteed beats — the budget buys EXTRA friction, never the plot
     compression: { at: 40, pool: ['greasefire', 'flockwave'] },
-    break: { at: 24, pool: ['tourbus', 'greasefire', 'flockwave'] },
+    break: { at: 24, pool: ['tourbus', 'greasefire', 'flockwave', 'inspector'] },
   },
 };
 export const DIR_EV = {
@@ -86,6 +91,7 @@ export const DIR_EV = {
   flockwave: { fam: 'tourist', w: 1.1, cost: 16, cd: 90, max: 3, phases: ['compression', 'break'], tg: 'phones_up' },
   greasefire: { fam: 'failure', w: 1.2, cost: 26, cd: 150, max: 2, phases: ['compression', 'break'], tg: 'griddle_hiss' },
   tourbus: { fam: 'tourist', w: 1.0, cost: 30, cd: 999, max: 1, phases: ['break'], tg: 'air_brakes' },
+  inspector: { fam: 'social', w: 0.8, cost: 20, cd: 999, max: 1, phases: ['break'], tg: 'clipboard' },
   // authored opening fault
   shardsopen: { fam: 'failure', cost: 0, cd: 999, max: 1, authored: true, tg: 'crash_back' },
   // fixed-time set pieces (the old AT clocks, now telegraphed + family-fair).
@@ -202,6 +208,7 @@ export class Sim {
     this._larpDone = 0; this._kaleDone = 0; this._seqDone = 0; this._contagionNext = false;
     this.pstats = {};
     this.spills = []; this.mopOut = false; this._sinkDrip = 0; this._sinkWarned = false;
+    this.insp = null;
     this.drcInit();
   }
   addSpill(x, z) {
@@ -276,7 +283,7 @@ export class Sim {
       if (!p.conn) { p.graceT -= dt; if (p.graceT <= 0) { this.dropAll(p); this.players.delete(pid); } }
     }
     if (this.ph === 'count') { this.cd -= dt; if (this.cd <= 0) { this.ph = 'shift'; this.t = 0; this.rentTg = this.rentTarget(); this.push({ k: 'open' }); } }
-    if (this.ph === 'shift') { this.t += dt; this.shiftDirector(dt); if (this.t >= C.SHIFT_LEN) { this.ph = 'close'; this.cd = C.CLOSE_LEN; this.push({ k: 'lastcall' }); } }
+    if (this.ph === 'shift') { this.t += dt; this.shiftDirector(dt); this.updateInspector(dt); if (this.t >= C.SHIFT_LEN) { this.ph = 'close'; this.cd = C.CLOSE_LEN; this.push({ k: 'lastcall' }); } }
     if (this.ph === 'close') {
       this.cd -= dt;
       for (const cu of this.cust) if (cu.st !== 'leave' && cu.st !== 'drag' && cu.st !== 'air') this.sendHome(cu);
@@ -450,7 +457,7 @@ export class Sim {
     // weighted extras: mess and the post-spike valve hold back NEW pressure
     if (d.valveT > 0 || this.messScore() > DIR.messHold) return;
     const cands = [];
-    for (const key of ['flockwave', 'greasefire', 'tourbus']) {
+    for (const key of ['flockwave', 'greasefire', 'tourbus', 'inspector']) {
       const e = DIR_EV[key];
       if (!e.phases.includes(phase)) continue;
       if ((d.used[key] || 0) >= e.max) continue;
@@ -491,6 +498,64 @@ export class Sim {
       for (const cu of fresh) cu.bus = true;
       this.busT = C.BUS_CLOCK; this._busWarn = 0;
       this.push({ k: 'busin' });
+    } else if (key === 'inspector') this.spawnInspector();
+  }
+  // ── the health inspector: sits alone, orders coffee black, grades the
+  // floor until cash-out. Fires, glass, puddles and airborne HUMANS all go on
+  // the clipboard. Keep the place clean until he leaves.
+  spawnInspector() {
+    if (this.insp) return;
+    const party = this.nid();
+    const ti = this.freeTable(1);
+    if (ti >= 0) this.mkCust('inspector', LAYOUT.spawnsIn[3].x, LAYOUT.spawnsIn[3].z, { party, table: ti, seat: 0 });
+    else {
+      const si = this.freeStool(); if (si < 0) return;
+      this.mkCust('inspector', LAYOUT.spawnsIn[3].x, LAYOUT.spawnsIn[3].z, { party, stool: si });
+    }
+    const cu = this.cust[this.cust.length - 1];
+    this._pendingOrder.set(party, { lines: [{ d: 'coffee', ok: false }], insp: true });
+    this.insp = { id: cu.id, t: 0, s1: 1, viol: 0, sawT: 0, done: false };
+    this.push({ k: 'text', s: 'insp_in' });
+  }
+  inspSees() {
+    const I = this.insp;
+    if (!I || I.done || I.sawT > 0) return;
+    I.viol += C.INSP_SAW; I.sawT = 5;
+    this.push({ k: 'inspsaw' });
+  }
+  updateInspector(dt) {
+    const I = this.insp; if (!I) return;
+    const cu = this.cust.find(c => c.id === I.id);
+    if (!cu) { if (!I.done) this.inspVerdict(); this.insp = null; return; }
+    if (I.sawT > 0) I.sawT -= dt;
+    if (I.done) return;
+    if (cu.st === 'leave' || cu.st === 'out') { this.inspVerdict(); return; }
+    I.t += dt;
+    I.s1 -= dt;
+    if (I.s1 <= 0) {
+      I.s1 = 1;
+      I.viol += this.fires.length * 8
+        + this.items.filter(i => i.k === 'shard' && !i.holder).length
+        + this.spills.length * 1.5;
+    }
+    if (I.t >= C.INSP_STAY) {
+      const tk = this.tickets.find(t => t.insp);
+      if (tk) { I.viol += C.INSP_REFUSED; this.dropTicket(tk.party); } // never served: noted
+      this.inspVerdict();
+      this.sendHome(cu);
+    }
+  }
+  inspVerdict() {
+    const I = this.insp; if (!I || I.done) return;
+    I.done = true;
+    const v = Math.round(I.viol);
+    if (v <= C.INSP_PASS) { this.bumpCred(C.INSP_CRED_PASS); this.queueReview('r_inspect_pass'); this.push({ k: 'insppass', v }); }
+    else if (v <= C.INSP_CITE) { this.bumpCred(-C.INSP_CRED_WARN); this.queueReview('r_inspect_warn'); this.push({ k: 'inspwarn', v }); }
+    else {
+      this.rentE = Math.max(0, this.rentE - C.INSP_FINE);
+      this.bumpCred(-C.INSP_CRED_FAIL); this.bumpGent(C.INSP_GENT_FAIL);
+      this.queueReview('r_inspect_fail');
+      this.push({ k: 'inspcite', v, a: C.INSP_FINE });
     }
   }
   busHonk() {
@@ -631,10 +696,11 @@ export class Sim {
           if (po && !po.placed) {
             po.placed = true;
             this.tickets.push({
-              id: this.nid(), party: cu.party, table: cu.table, stool: cu.stool, ln: po.lines, t0: this.t, pat: C.PATIENCE,
+              id: this.nid(), party: cu.party, table: cu.table, stool: cu.stool, ln: po.lines, t0: this.t,
+              pat: po.insp ? C.PATIENCE * 1.5 : C.PATIENCE,
               flock: !!po.flock, bonus: !!po.bonus, squat: !!po.squat, dale: !!po.dale,
               kale: !!po.kale, riddle: po.kale ? po.lines[0].d : undefined, tries: 0, seq: !!po.seq,
-              ty: cu.ty,
+              insp: !!po.insp, ty: cu.ty,
             });
             this.push({ k: 'order', tb: cu.table, st: cu.stool });
           }
@@ -693,6 +759,7 @@ export class Sim {
       tk.pat -= dt * drain;
       if (tk.pat <= 0) {
         if (tk.seq) this.seqPost();
+        if (tk.insp && this.insp && !this.insp.done) this.insp.viol += C.INSP_REFUSED; // he noted that
         this.dropTicket(tk.party, true);
         this.queueReview(tk.seq ? 'r_seq_post' : 'r_slow'); this.push({ k: 'angry' }); this.stats.lost++;
       }
@@ -868,6 +935,7 @@ export class Sim {
       fr.y = 1.2;
       this.pst(p.seat).fy++;
       this.push({ k: 'yeetf', s: p.seat, v: fr.seat, x: p.x, z: p.z });
+      this.inspSees(); // staff, airborne, also goes on the clipboard
     } else fr.stunT = C.STUN_DROP;
   }
   tumble(p, hard) {
@@ -1345,7 +1413,7 @@ export class Sim {
   completeTicket(tk) {
     const base = tk.ln.reduce((s, l) => s + C.PAY[l.d], 0);
     const tip = Math.round(base * C.TIP_MAX * (Math.max(0, tk.pat) / C.PATIENCE) * (this.up('bell') ? 1.5 : 1));
-    if (tip > 0 && !tk.squat) { this.rentE += tip; this.push({ k: 'tip', a: tip }); }
+    if (tip > 0 && !tk.squat && !tk.insp) { this.rentE += tip; this.push({ k: 'tip', a: tip }); }
     this.tickets = this.tickets.filter(t => t !== tk);
     if (tk.kale) { this.bumpGent(C.KALE_GENT); this.queueReview('r_kale'); this.push({ k: 'kaleok' }); }
     if (tk.seq) {
@@ -1374,6 +1442,7 @@ export class Sim {
         cu.st = 'air'; cu.y = 1.1; cu.thrownBy = p.seat;
         cu.vx = p.in.fx * C.THROW_V; cu.vz = p.in.fz * C.THROW_V; cu.vy = C.THROW_UP;
         this.push({ k: 'yeet', x: p.x, z: p.z });
+        this.inspSees(); // a customer, airborne, in front of the clipboard
       }
       return;
     }
@@ -1628,6 +1697,7 @@ export class Sim {
     this._zpaid = 0; this._tx1 = 0; this._tx2 = 0; this._pendingOrder = new Map();
     this._larpDone = 0; this._kaleDone = 0; this._seqDone = 0;
     this.spills = []; this.mopOut = false; this._sinkDrip = 0; this._sinkWarned = false;
+    this.insp = null;
     this.drcInit();
     if (this._contagionNext) { this.flockQ = C.CONTAGION_FLOCKS; this._contagionNext = false; this.push({ k: 'contagion' }); }
     this.reviews = []; this.rentE = this.carry;
@@ -1675,7 +1745,7 @@ export class Sim {
         i: t.id, tb: t.table, sl: t.stool,
         ln: t.ln.map(l => ({ d: t.kale && !l.ok ? '?' : l.d, ok: l.ok ? 1 : 0 })),
         pa: R2(Math.max(0, t.pat) / C.PATIENCE), dale: t.dale ? 1 : 0,
-        kl: t.kale ? 1 : 0, rd: t.kale ? t.riddle : undefined, sq: t.seq ? 1 : 0,
+        kl: t.kale ? 1 : 0, rd: t.kale ? t.riddle : undefined, sq: t.seq ? 1 : 0, ins: t.insp ? 1 : 0,
       })),
       ec: this.ec,
     };
