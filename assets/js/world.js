@@ -667,6 +667,36 @@ export class World {
     this.river = mesh(new THREE.PlaneGeometry(24.7, 3.0), new THREE.MeshBasicMaterial({ color: 0x9fd0e0, transparent: true, opacity: 0.3, depthWrite: false }));
     this.river.rotation.x = -Math.PI / 2; this.river.position.set(0, -0.1, 22.55);
     this.scene.add(this.river);
+    // the pig pen: posts, rails, mud, and a gate that the director rattles
+    const pen = new THREE.Group();
+    const P = LAYOUT.pigPen;
+    const mud = mesh(GEO.disc, new THREE.MeshBasicMaterial({ color: 0x6b4a34, transparent: true, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    mud.rotation.x = -Math.PI / 2; mud.scale.setScalar(P.r * 2); mud.position.set(P.x, 0.005, P.z);
+    pen.add(mud);
+    const N = 8;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      const px = P.x + Math.sin(a) * P.r, pz = P.z + Math.cos(a) * P.r;
+      if (Math.abs(pz - LAYOUT.pigGate.z) < 0.9 && Math.abs(px - LAYOUT.pigGate.x) < 1.2) continue; // the gate spans here
+      pen.add(mesh(GEO.cyl, M(PAL.woodDark), px, 0.4, pz, 0.09, 0.8, 0.09));
+      const a2 = ((i + 1) / N) * Math.PI * 2;
+      const qx = P.x + Math.sin(a2) * P.r, qz = P.z + Math.cos(a2) * P.r;
+      const mx = (px + qx) / 2, mz = (pz + qz) / 2, len = Math.hypot(qx - px, qz - pz);
+      if (!(Math.abs(mz - LAYOUT.pigGate.z) < 0.9 && Math.abs(mx - LAYOUT.pigGate.x) < 1.2)) {
+        for (const ry of [0.28, 0.58]) pen.add(mesh(GEO.box, M(PAL.wood), mx, ry, mz, len, 0.06, 0.06, Math.atan2(qx - px, qz - pz) + Math.PI / 2));
+      }
+    }
+    this.gateMesh = new THREE.Group();
+    this.gateMesh.position.set(LAYOUT.pigGate.x - 0.55, 0, LAYOUT.pigGate.z);
+    const gatePanel = new THREE.Group();
+    for (const ry of [0.22, 0.45, 0.68]) gatePanel.add(mesh(GEO.box, M(0x8a5a3a), 0.55, ry, 0, 1.1, 0.07, 0.06));
+    gatePanel.add(mesh(GEO.box, M(0x8a5a3a), 0.55, 0.45, 0, 0.08, 0.55, 0.07, 0.6));
+    this.gateMesh.add(gatePanel);
+    this.gatePanel = gatePanel;
+    pen.add(this.gateMesh);
+    castAll(pen);
+    this.scene.add(pen);
+    this.pigM = new Map();
     this.bushViews = LAYOUT.huckBushes.map(b => {
       const g = new THREE.Group();
       g.add(mesh(GEO.sph, M(0x4f7a4a), 0, 0.4, 0, 1.15, 0.85, 1.15));
@@ -952,6 +982,13 @@ export class World {
       g.add(mesh(GEO.cyl, M(0x8a5a3a, { r: 0.55 }), 0, 0.055, 0, 0.62, 0.02, 0.62));
       for (const a of [0, 1.57, 3.14, 4.71]) g.add(mesh(GEO.box, M(0x5a3a24), Math.sin(a) * 0.33, 0.07, Math.cos(a) * 0.33, 0.1, 0.05, 0.04, a));
     }
+    else if (kind === 'gun') {
+      // Hazel's varmint gun: side-by-side, older than the diner
+      g.add(mesh(GEO.cyl, M(0x5a5f66, { r: 0.35, m: 0.5 }), 0.12, 0.1, -0.05, 0.05, 0.9, 0.05, Math.PI / 2, 0, 0));
+      g.add(mesh(GEO.cyl, M(0x5a5f66, { r: 0.35, m: 0.5 }), 0.12, 0.1, 0.05, 0.05, 0.9, 0.05, Math.PI / 2, 0, 0));
+      g.add(mesh(GEO.box, M(0x6b4a2e, { r: 0.6 }), -0.32, 0.08, 0, 0.34, 0.12, 0.1));
+      g.add(mesh(GEO.box, M(0x5a3a24), -0.12, 0.05, 0, 0.14, 0.08, 0.09));
+    }
     else if (kind === 'mop') {
       const stick = mesh(GEO.cyl, M(0x8a7a5a), 0, 0.55, 0, 0.05, 1.1, 0.05);
       g.add(stick);
@@ -1103,6 +1140,40 @@ export class World {
       for (const [id, g] of this.spillMeshes) if (!seenS.has(id)) { this.scene.remove(g); this.spillMeshes.delete(id); }
     }
     if (this.mopMesh) this.mopMesh.visible = !snap.mo;
+    // pigs
+    if (snap.pg && this.pigM) {
+      const seenPg = new Set();
+      for (const q of snap.pg) {
+        seenPg.add(q.i);
+        let v = this.pigM.get(q.i);
+        if (!v) {
+          const g = new THREE.Group();
+          const body = mesh(GEO.box, M(0xe8a8b8, { r: 0.85 }), 0, 0.3, 0, 0.62, 0.4, 0.44);
+          const snout = mesh(GEO.box, M(0xd98a9c), 0, 0.28, 0.26, 0.18, 0.15, 0.1);
+          g.add(body, snout);
+          for (const dx of [-0.17, 0.17]) g.add(mesh(GEO.cone, M(0xd98a9c), dx, 0.53, 0.1, 0.13, 0.16, 0.1));
+          for (const [lx, lz] of [[-0.2, -0.14], [0.2, -0.14], [-0.2, 0.14], [0.2, 0.14]]) g.add(mesh(GEO.cyl, M(0xd98a9c), lx, 0.09, lz, 0.09, 0.18, 0.09));
+          g.add(mesh(GEO.cyl, M(0xd98a9c), 0, 0.42, -0.26, 0.05, 0.16, 0.05, 0, 0, 0.9));
+          g.add(blob(0.36));
+          g.userData = { body, ph: Math.random() * 6.28 };
+          castAll(g);
+          this.scene.add(g);
+          v = { g }; this.pigM.set(q.i, v);
+        }
+        const g = v.g;
+        g.position.x += (q.x - g.position.x) * 0.4;
+        g.position.z += (q.z - g.position.z) * 0.4;
+        g.position.y = q.y || 0;
+        g.rotation.y = q.yw || 0;
+        const u = g.userData;
+        u.ph += 0.28;
+        if (q.et) { g.rotation.x = 0.35 + Math.sin(u.ph * 2.4) * 0.08; }          // nose down, munching
+        else if (q.st === 'held') { g.rotation.x = 0; g.rotation.z = Math.sin(u.ph) * 0.16; } // squirming
+        else { g.rotation.x = 0; g.rotation.z = Math.sin(u.ph) * 0.05; }
+      }
+      for (const [id, v] of this.pigM) if (!seenPg.has(id)) { this.scene.remove(v.g); this.pigM.delete(id); }
+    }
+    if (this.gatePanel) this.gatePanel.rotation.y += (((snap.gt ? -1.9 : 0)) - this.gatePanel.rotation.y) * 0.2; // broken = swung open
     this.syncBubbles(snap);
     // supply yard dynamics
     if (this.bushViews && snap.bu) for (let i = 0; i < this.bushViews.length; i++) {
@@ -1207,6 +1278,17 @@ export class World {
     if (e.k === 'subfail') this.emote('😤', e.x, e.z);
     if (e.k === 'callout') { const ic = { fire: '🔥', bus: '🚌', squat: '🧳', hands: '🆘', table: '🗒️', mess: '🧹', plates: '🍽️', need: '🙋' }[e.w] || '🙋'; this.emote(ic, e.x, e.z); }
     if (e.k === 'ability') { const ic = { hazel: '🏠', buck: '💪', june: '⚡', reed: '🎵' }[e.e] || '✨'; this.emote(ic, e.x, e.z); }
+    if (e.k === 'boom') {
+      this.shake(0.55);
+      for (let i = 0; i < 10; i++) this.puff(this.smoke, e.x, 1.3, e.z, { life: 1.1, v: 3.2, vy: 1.8, s: 0.5 });
+      for (let i = 0; i < 5; i++) this.puff(this.pop, e.x, 1.3, e.z, { life: 0.4, v: 5, vy: 2.5, s: 0.3 });
+    }
+    if (e.k === 'gunclick') this.emote('…', e.x, e.z);
+    if (e.k === 'gatebreak') this.shake(0.18);
+    if (e.k === 'pigate') { for (let i = 0; i < 3; i++) this.puff(this.pop, e.x, 0.3, e.z, { life: 0.5, v: 1.6, vy: 1.4, s: 0.25 }); }
+    if (e.k === 'pigevidence') this.emote('🐷', e.x, e.z);
+    if (e.k === 'pigsquirm') this.emote('🐷', e.x, e.z);
+    if (e.k === 'pigyeet') this.shake(0.14);
     if (e.k === 'chime') this.doorT = 1.15;
     if (e.k === 'cha') this.moneyPop('+$' + e.a, e.x, e.z);
     if (e.k === 'order') { const pos = e.tb != null ? LAYOUT.tables[e.tb] : (e.st != null ? LAYOUT.stools[e.st] : null); if (pos) this.emote('📝', pos.x, pos.z); }

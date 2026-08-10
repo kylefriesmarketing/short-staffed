@@ -53,6 +53,14 @@ export const C = {
   INSP_STAY: 70, INSP_PASS: 25, INSP_CITE: 60, INSP_FINE: 45,
   INSP_CRED_PASS: 6, INSP_CRED_WARN: 2, INSP_CRED_FAIL: 5, INSP_GENT_FAIL: 3,
   INSP_REFUSED: 30, INSP_SAW: 15,
+  // HAZEL'S VARMINT GUN (last-local's Regulator, honest-to-Montana edition):
+  // it exists for the BEAR. Firing it indoors is optional, costly, and
+  // absurdly overqualified — exactly the bible's violence contract.
+  GUN_SHELLS: 2, GUN_GENT: 8, GUN_CRED: 2, GUN_INSP: 40, GUN_SLOW: 0.9, GUN_BEAR_R: 7,
+  // THE PIG PEN (yard): the director rattles the gate; loose pigs waddle in
+  // the front door and eat the floor. They also eat EVIDENCE.
+  PIG_N: 3, PIG_SPEED: 1.5, PIG_EAT_R: 0.7, PIG_EAT_T: 1.6, PIG_CARRY: 0.72,
+  PIG_SQUIRM: 0.14, PIG_GENT_LAPTOP: 3, GATE_FIX_T: 1.2,
 };
 // the crew: apron colour = who you are. Q fires the ability, one cooldown each.
 export const EMPLOYEES = [
@@ -82,7 +90,7 @@ export const DIR = {
   messHold: 24,         // messScore above this holds new pressure too
   prepFault: 10,        // "something is already broken": shards at open
   headline: {           // guaranteed beats — the budget buys EXTRA friction, never the plot
-    compression: { at: 40, pool: ['greasefire', 'flockwave'] },
+    compression: { at: 40, pool: ['greasefire', 'flockwave', 'piggate'] },
     break: { at: 24, pool: ['tourbus', 'greasefire', 'flockwave', 'inspector'] },
   },
 };
@@ -92,6 +100,7 @@ export const DIR_EV = {
   greasefire: { fam: 'failure', w: 1.2, cost: 26, cd: 150, max: 2, phases: ['compression', 'break'], tg: 'griddle_hiss' },
   tourbus: { fam: 'tourist', w: 1.0, cost: 30, cd: 999, max: 1, phases: ['break'], tg: 'air_brakes' },
   inspector: { fam: 'social', w: 0.8, cost: 20, cd: 999, max: 1, phases: ['break'], tg: 'clipboard' },
+  piggate: { fam: 'wildlife', w: 1.0, cost: 24, cd: 240, max: 2, phases: ['compression', 'break'], tg: 'gate_rattle' },
   // authored opening fault
   shardsopen: { fam: 'failure', cost: 0, cd: 999, max: 1, authored: true, tg: 'crash_back' },
   // fixed-time set pieces (the old AT clocks, now telegraphed + family-fair).
@@ -134,6 +143,8 @@ export const LAYOUT = {
   shelf: { x: -10.6, z: -6.1 },
   trayRack: { x: 2.6, z: -2.6 },  // east end of the pass, where the runner's loop starts
   mopHook: { x: 4.5, z: -4.4 },   // the mop BUCKET: its own open corner, no competing verbs in reach
+  gunSpot: { x: 8.6, z: -3.4 },   // under the register, kitchen side — where the varmint gun sleeps
+  pigPen: { x: -6.5, z: 10.5, r: 2.2 }, pigGate: { x: -6.5, z: 8.2 },
   crates: [{ x: -11.3, z: -4.3, ing: 'batter' }, { x: -10.3, z: -4.3, ing: 'patty' }, { x: -9.3, z: -4.3, ing: 'trout' }],
   extHook: { x: 4.4, z: -6.3 },
   sign: { x: 9.2, z: 6.6 },
@@ -209,7 +220,19 @@ export class Sim {
     this.pstats = {};
     this.spills = []; this.mopOut = false; this._sinkDrip = 0; this._sinkWarned = false;
     this.insp = null;
+    this.pigInit();
     this.drcInit();
+  }
+  pigInit() {
+    this.gate = 'ok'; this.gunShells = C.GUN_SHELLS; this.gunOut = false;
+    this.pigs = [];
+    for (let i = 0; i < C.PIG_N; i++) {
+      this.pigs.push({
+        id: this.nid(), st: 'pen', inside: false, y: 0, eatT: 0,
+        x: LAYOUT.pigPen.x - 1 + i, z: LAYOUT.pigPen.z + (i % 2) * 0.8,
+        tx: LAYOUT.pigPen.x, tz: LAYOUT.pigPen.z, wanderT: 1 + i,
+      });
+    }
   }
   addSpill(x, z) {
     this.spills.push({ id: this.nid(), x, z });
@@ -242,7 +265,7 @@ export class Sim {
     p = {
       pid, seat, name: String(name || 'Cook').slice(0, 16), color: (color | 0) % 4,
       x: 8.2 + seat * 0.7, z: 5.4, yaw: 0, fx: 0, fz: -1, vx: 0, vz: 0,
-      held: null, heldCu: null, busyT: 0, spray: false, cast: false, castT: 0, biteT: 0,
+      held: null, heldCu: null, heldPig: null, busyT: 0, spray: false, cast: false, castT: 0, biteT: 0,
       stack: [], wob: 0, stunT: 0, carriedBy: -1, heldPl: -1, air: null, y: 0, soakT: 0, carryT: 0,
       slideX: 0, slideZ: 0, svx: 0, svz: 0,
       in: { x: 0, z: 0, ah: false, sp: false, fx: 0, fz: -1 }, aSeen: 0, thSeen: 0, aPend: 0, thPend: 0,
@@ -270,6 +293,8 @@ export class Sim {
     if (th > p.thSeen) { p.thPend += Math.min(4, th - p.thSeen); p.thSeen = th; }
     if (co > (p.coSeen || 0)) { p.coPend = (p.coPend || 0) + Math.min(2, co - (p.coSeen || 0)); p.coSeen = co; }
     if (ab > (p.abSeen || 0)) { p.abPend = (p.abPend || 0) + Math.min(2, ab - (p.abSeen || 0)); p.abSeen = ab; }
+    const gn = m.gn | 0;
+    if (gn > (p.gnSeen || 0)) { p.gnPend = (p.gnPend || 0) + Math.min(2, gn - (p.gnSeen || 0)); p.gnSeen = gn; }
   }
   again() { if (this.ph === 'over') { const keep = [...this.players.values()]; this.reset(); for (const p of keep) if (p.conn) this.join(p.pid, p.name, p.color); this.push({ k: 'start' }); } }
 
@@ -284,6 +309,7 @@ export class Sim {
     }
     if (this.ph === 'count') { this.cd -= dt; if (this.cd <= 0) { this.ph = 'shift'; this.t = 0; this.rentTg = this.rentTarget(); this.push({ k: 'open' }); } }
     if (this.ph === 'shift') { this.t += dt; this.shiftDirector(dt); this.updateInspector(dt); if (this.t >= C.SHIFT_LEN) { this.ph = 'close'; this.cd = C.CLOSE_LEN; this.push({ k: 'lastcall' }); } }
+    if (this.ph === 'shift' || this.ph === 'close' || this.ph === 'supply' || this.ph === 'prep') this.updatePigs(dt);
     if (this.ph === 'close') {
       this.cd -= dt;
       for (const cu of this.cust) if (cu.st !== 'leave' && cu.st !== 'drag' && cu.st !== 'air') this.sendHome(cu);
@@ -457,7 +483,7 @@ export class Sim {
     // weighted extras: mess and the post-spike valve hold back NEW pressure
     if (d.valveT > 0 || this.messScore() > DIR.messHold) return;
     const cands = [];
-    for (const key of ['flockwave', 'greasefire', 'tourbus', 'inspector']) {
+    for (const key of ['flockwave', 'greasefire', 'tourbus', 'inspector', 'piggate']) {
       const e = DIR_EV[key];
       if (!e.phases.includes(phase)) continue;
       if ((d.used[key] || 0) >= e.max) continue;
@@ -499,6 +525,12 @@ export class Sim {
       this.busT = C.BUS_CLOCK; this._busWarn = 0;
       this.push({ k: 'busin' });
     } else if (key === 'inspector') this.spawnInspector();
+    else if (key === 'piggate') {
+      if (this.gate === 'broken') return;
+      this.gate = 'broken';
+      for (const pg of this.pigs) if (pg.st === 'pen') { pg.st = 'loose'; pg.tx = LAYOUT.door.x; pg.tz = LAYOUT.door.z + 1.2; pg.inside = false; }
+      this.push({ k: 'gatebreak' });
+    }
   }
   // ── the health inspector: sits alone, orders coffee black, grades the
   // floor until cash-out. Fires, glass, puddles and airborne HUMANS all go on
@@ -536,7 +568,8 @@ export class Sim {
       I.s1 = 1;
       I.viol += this.fires.length * 8
         + this.items.filter(i => i.k === 'shard' && !i.holder).length
-        + this.spills.length * 1.5;
+        + this.spills.length * 1.5
+        + this.pigs.filter(pg => pg.inside).length * 4; // livestock. Indoors.
     }
     if (I.t >= C.INSP_STAY) {
       const tk = this.tickets.find(t => t.insp);
@@ -848,6 +881,8 @@ export class Sim {
     if (p.soakT > 0) mult *= C.SOAK_MULT;
     const heldTray = !!(p.held && this.itemOf(p.held)?.k === 'tray');
     if (heldTray && !bigHands) mult *= C.TRAY_SLOW - p.stack.length * C.TRAY_LOAD_SLOW;
+    if (p.heldPig != null && !bigHands) mult *= C.PIG_CARRY;
+    if (p.held && this.itemOf(p.held)?.k === 'gun') mult *= C.GUN_SLOW;
     const sprint = p.in.sp && p.heldPl < 0;
     if (sprint) mult *= C.SPRINT_MULT;
     const tx = p.in.x * C.COOK_SPEED * mult, tz = p.in.z * C.COOK_SPEED * mult;
@@ -895,11 +930,14 @@ export class Sim {
     while (p.thPend > 0) { p.thPend--; this.doThrow(p); }
     while ((p.coPend || 0) > 0) { p.coPend--; this.doCallout(p); }
     while ((p.abPend || 0) > 0) { p.abPend--; this.doAbility(p); }
+    while ((p.gnPend || 0) > 0) { p.gnPend--; this.doFire(p); }
     if (p.spray) this.doSpray(p, dt);
   }
   clampPlayer(p) {
     p.x = Math.max(-C.ROOM_X + C.COOK_R, Math.min(C.ROOM_X - C.COOK_R, p.x));
-    if (this.ph === 'supply' || this.ph === 'prep') {
+    // the yard opens for the pig emergency: a broken gate (someone has to fix
+    // it), a pig in your arms (it goes back to the pen), or you're already out
+    if (this.ph === 'supply' || this.ph === 'prep' || this.gate === 'broken' || p.heldPig != null || p.z > C.ROOM_Z + 0.4) {
       // the yard is open: pass through the door gap, roam to the riverbank
       if (Math.abs(p.x - LAYOUT.door.x) < LAYOUT.door.gap) p.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.YARD_Z - C.COOK_R, p.z));
       else if (p.z < C.ROOM_Z) p.z = Math.max(-C.ROOM_Z + C.COOK_R, Math.min(C.ROOM_Z - C.COOK_R, p.z));
@@ -1009,9 +1047,19 @@ export class Sim {
     if (this.ph === 'lobby' && this.near(p, LAYOUT.sign, 1.9)) { this.ph = 'count'; this.cd = C.COUNT_LEN; this.push({ k: 'count' }); return; }
     if (this.ph === 'supply') { this.supplyAct(p, held); return; }
     if (this.ph !== 'shift' && this.ph !== 'close' && this.ph !== 'count') return;
-    // 2. put down whoever you're carrying
+    // 2. put down whoever (or whatever) you're carrying
     if (p.heldPl >= 0) { this.releaseFriend(p, false); return; }
     if (p.heldCu) { const cu = this.cust.find(c => c.id === p.heldCu); if (cu) { cu.st = 'reseat'; cu.y = 0; } p.heldCu = null; return; }
+    if (p.heldPig != null) {
+      const pg = this.pigs.find(q => q.id === p.heldPig);
+      p.heldPig = null;
+      if (pg) {
+        pg.y = 0;
+        if (d2(pg.x, pg.z, LAYOUT.pigPen.x, LAYOUT.pigPen.z) < LAYOUT.pigPen.r * LAYOUT.pigPen.r) { pg.st = 'pen'; pg.inside = false; pg.flee = false; this.push({ k: 'pighome', x: pg.x, z: pg.z }); this.pst(p.seat).ph2 = (this.pst(p.seat).ph2 || 0) + 1; }
+        else { pg.st = 'loose'; }
+      }
+      return;
+    }
     // 3. stations
     if (this.stationAct(p, held)) return;
     // 4. taps (a tray under the spout takes the pour straight onto the tray)
@@ -1034,6 +1082,26 @@ export class Sim {
     for (const cr of LAYOUT.crates) if (this.near(p, cr) && !held) { const it = this.spawnItem('raw', cr.x, 1, cr.z, { ing: cr.ing }); it.holder = p.pid; p.held = it.id; return; }
     // 7. extinguisher hook
     if (this.near(p, LAYOUT.extHook) && !held && !this.extOut) { this.extOut = true; const ex = this.spawnItem('ext', p.x, 1, p.z); ex.holder = p.pid; p.held = ex.id; return; }
+    // 7c. the varmint gun sleeps under the register; the pen gate takes hands
+    if (this.near(p, LAYOUT.gunSpot, 1.2) && !held && !this.gunOut) {
+      this.gunOut = true;
+      const gu = this.spawnItem('gun', p.x, 1, p.z);
+      gu.holder = p.pid; p.held = gu.id;
+      this.push({ k: 'gungrab', x: p.x, z: p.z });
+      return;
+    }
+    if (held && held.k === 'gun' && this.near(p, LAYOUT.gunSpot, 1.2)) { this.removeItem(held.id); p.held = null; this.gunOut = false; this.push({ k: 'gunback' }); return; }
+    if (this.gate === 'broken' && this.near(p, LAYOUT.pigGate, 1.6) && !held) {
+      p.busyT = C.GATE_FIX_T;
+      this.gate = 'ok';
+      this.push({ k: 'gatefixed', x: LAYOUT.pigGate.x, z: LAYOUT.pigGate.z });
+      return;
+    }
+    // 7d. scoop a loose pig (empty hands; it will not thank you)
+    if (!held && p.heldPig == null && !p.heldCu) {
+      const pg = this.pigs.find(q => q.st === 'loose' && q.eatT <= 0 && d2(p.x, p.z, q.x, q.z) < 1.2 * 1.2);
+      if (pg) { pg.st = 'held'; p.heldPig = pg.id; this.push({ k: 'pigscoop', x: pg.x, z: pg.z, s: p.seat }); return; }
+    }
     // 7a. the mop: grab it off the hook, mop the nearest spill (shards ride
     // along free), hang it back up. The floor is a system now, not set dressing.
     if (this.near(p, LAYOUT.mopHook) && !held && !this.mopOut) { this.mopOut = true; const mp2 = this.spawnItem('mop', p.x, 1, p.z); mp2.holder = p.pid; p.held = mp2.id; return; }
@@ -1436,6 +1504,17 @@ export class Sim {
   }
   doThrow(p) {
     if (p.heldPl >= 0) { this.releaseFriend(p, true); return; }
+    if (p.heldPig != null) {
+      const pg = this.pigs.find(q => q.id === p.heldPig);
+      p.heldPig = null;
+      if (pg) {
+        pg.st = 'air'; pg.y = 1.1;
+        pg.vx = p.in.fx * C.THROW_V; pg.vz = p.in.fz * C.THROW_V; pg.vy = C.THROW_UP;
+        this.push({ k: 'pigyeet', x: p.x, z: p.z, s: p.seat });
+        this.inspSees(); // airborne livestock. He has a whole PAGE for this.
+      }
+      return;
+    }
     if (p.heldCu) {
       const cu = this.cust.find(c => c.id === p.heldCu); p.heldCu = null;
       if (cu) {
@@ -1485,6 +1564,7 @@ export class Sim {
     p.stack = []; p.wob = 0;
     if (p.heldPl >= 0) this.releaseFriend(p, false);
     if (p.heldCu) { const cu = this.cust.find(c => c.id === p.heldCu); if (cu) cu.st = 'reseat'; p.heldCu = null; }
+    if (p.heldPig != null) { const pg = this.pigs.find(q => q.id === p.heldPig); if (pg) { pg.st = 'loose'; pg.y = 0; } p.heldPig = null; }
     p.cast = false; p.biteT = 0;
   }
   removeItem(id) { const i = this.items.findIndex(x => x.id === id); if (i >= 0) this.items.splice(i, 1); }
@@ -1559,6 +1639,152 @@ export class Sim {
     p.abT = emp.cd;
     this.pst(p.seat).ab = (this.pst(p.seat).ab || 0) + 1;
     this.push({ k: 'ability', s: p.seat, e: emp.key, x: p.x, z: p.z });
+  }
+  // ── THE PIGS ───────────────────────────────────────────────────────────────
+  updatePigs(dt) {
+    const EDIBLE = ['dish', 'raw', 'fish', 'huck', 'laptop'];
+    for (const pg of this.pigs) {
+      if (pg.st === 'held') {
+        const hp = [...this.players.values()].find(q => q.heldPig === pg.id);
+        if (!hp || !hp.conn) { pg.st = 'loose'; pg.y = 0; continue; }
+        pg.x = hp.x + hp.in.fx * 0.55; pg.z = hp.z + hp.in.fz * 0.55; pg.y = 0.95;
+        // pigs are not luggage: they squirm free eventually
+        if (this.r() < C.PIG_SQUIRM * dt) {
+          hp.heldPig = null; pg.st = 'loose'; pg.y = 0;
+          pg.tx = pg.x + this.r() * 4 - 2; pg.tz = pg.z + this.r() * 4 - 2;
+          this.push({ k: 'pigsquirm', x: pg.x, z: pg.z });
+        }
+        continue;
+      }
+      if (pg.st === 'air') {
+        pg.vy -= C.GRAV * dt;
+        pg.x += pg.vx * dt; pg.y += pg.vy * dt; pg.z += pg.vz * dt;
+        if (pg.y <= 0) {
+          pg.y = 0; pg.st = 'loose';
+          if (d2(pg.x, pg.z, LAYOUT.pigPen.x, LAYOUT.pigPen.z) < LAYOUT.pigPen.r * LAYOUT.pigPen.r) { pg.st = 'pen'; pg.inside = false; this.push({ k: 'pighome', x: pg.x, z: pg.z }); }
+          else this.push({ k: 'piglanded', x: pg.x, z: pg.z });
+        }
+        continue;
+      }
+      if (pg.st === 'pen') {
+        // an unfixed gate keeps leaking pigs — fixing it is the point
+        if (this.gate === 'broken' && (this.ph === 'shift' || this.ph === 'close') && this.r() < 0.08 * dt) {
+          pg.st = 'loose'; pg.inside = false;
+          continue;
+        }
+        pg.wanderT -= dt;
+        if (pg.wanderT <= 0) {
+          pg.wanderT = 2 + this.r() * 3;
+          const a = this.r() * 6.283, rr = this.r() * (LAYOUT.pigPen.r - 0.5);
+          pg.tx = LAYOUT.pigPen.x + Math.sin(a) * rr; pg.tz = LAYOUT.pigPen.z + Math.cos(a) * rr;
+        }
+        this.pigWalk(pg, dt, 0.6);
+        continue;
+      }
+      // fleeing (the gun said so): out the door, back to the pen, stay there
+      if (pg.flee) {
+        if (pg.inside) {
+          pg.tx = LAYOUT.door.x; pg.tz = LAYOUT.door.z + 1.2;
+          if (pg.z > LAYOUT.door.z - 0.3 && Math.abs(pg.x - LAYOUT.door.x) < LAYOUT.door.gap + 0.4) pg.inside = false;
+        } else {
+          pg.tx = LAYOUT.pigPen.x; pg.tz = LAYOUT.pigPen.z;
+          if (d2(pg.x, pg.z, LAYOUT.pigPen.x, LAYOUT.pigPen.z) < LAYOUT.pigPen.r * LAYOUT.pigPen.r) { pg.st = 'pen'; pg.flee = false; this.push({ k: 'pighome', x: pg.x, z: pg.z }); continue; }
+        }
+        this.pigWalk(pg, dt, 1.5);
+        continue;
+      }
+      // loose: head for the front door, then feast
+      if (pg.eatT > 0) {
+        pg.eatT -= dt;
+        if (pg.eatT <= 0 && pg.meal) {
+          if (pg.meal.kind === 'spill') this.spills = this.spills.filter(s => s.id !== pg.meal.id);
+          else {
+            const it = this.itemOf(pg.meal.id);
+            if (it) {
+              if (it.k === 'laptop') { this.bumpGent(-C.PIG_GENT_LAPTOP); this.push({ k: 'pigevidence', x: it.x, z: it.z }); }
+              this.removeItem(it.id);
+            }
+          }
+          this.push({ k: 'pigate', x: pg.x, z: pg.z });
+          pg.meal = null;
+        }
+        continue;
+      }
+      if (!pg.inside && this.ph !== 'supply' && this.ph !== 'prep') {
+        // waddle around to the front door
+        if (d2(pg.x, pg.z, LAYOUT.door.x, LAYOUT.door.z + 0.8) < 1.2) { pg.inside = true; pg.tx = pg.x; pg.tz = 2; }
+        else { pg.tx = LAYOUT.door.x; pg.tz = LAYOUT.door.z + 1.0; }
+      } else {
+        // hunt the nearest floor food (or evidence, or failing that, a puddle)
+        let best = null, bd = 6 * 6, kind = null;
+        for (const it of this.items) {
+          if (it.holder || !EDIBLE.includes(it.k) || it.y > 0.5) continue;
+          const dd = d2(pg.x, pg.z, it.x, it.z);
+          if (dd < bd) { bd = dd; best = it; kind = 'item'; }
+        }
+        if (!best) for (const s of this.spills) {
+          const dd = d2(pg.x, pg.z, s.x, s.z);
+          if (dd < bd) { bd = dd; best = s; kind = 'spill'; }
+        }
+        if (best && bd < C.PIG_EAT_R * C.PIG_EAT_R) { pg.eatT = C.PIG_EAT_T; pg.meal = { id: best.id, kind }; continue; }
+        if (best) { pg.tx = best.x; pg.tz = best.z; }
+        else {
+          pg.wanderT -= dt;
+          if (pg.wanderT <= 0) {
+            pg.wanderT = 2 + this.r() * 3;
+            if (pg.inside) { pg.tx = this.r() * 20 - 10; pg.tz = this.r() * 11 - 5.5; }
+            else { pg.tx = this.r() * 18 - 9; pg.tz = 9 + this.r() * 10; }
+          }
+        }
+      }
+      this.pigWalk(pg, dt, 1);
+      if (pg.inside) {
+        pg.x = Math.max(-C.ROOM_X + 0.4, Math.min(C.ROOM_X - 0.4, pg.x));
+        if (!this.outThroughDoor(pg.x, pg.z)) pg.z = Math.max(-C.ROOM_Z + 0.4, Math.min(C.ROOM_Z - 0.4, pg.z));
+      }
+    }
+  }
+  pigWalk(pg, dt, mul) {
+    const dx = pg.tx - pg.x, dz = pg.tz - pg.z, d = Math.hypot(dx, dz);
+    if (d < 0.15) return;
+    const v = C.PIG_SPEED * mul;
+    pg.x += (dx / d) * v * dt; pg.z += (dz / d) * v * dt;
+    pg.yaw = Math.atan2(dx, dz);
+    this.collideSolids(pg, 0.3);
+  }
+  // ── HAZEL'S VARMINT GUN ────────────────────────────────────────────────────
+  doFire(p) {
+    const held = p.held && this.itemOf(p.held);
+    if (!held || held.k !== 'gun') return;
+    if (this.gunShells <= 0) { this.push({ k: 'gunclick', x: p.x, z: p.z }); return; }
+    this.gunShells--;
+    this.pst(p.seat).gs = (this.pst(p.seat).gs || 0) + 1;
+    this.push({ k: 'boom', x: p.x, z: p.z, s: p.seat, sh: this.gunShells });
+    if (this.ph === 'supply' || this.ph === 'prep') {
+      // the LEGITIMATE use: the bear wants no part of this
+      if (this.bear) { this.bear = null; this.push({ k: 'bearout' }); }
+      return;
+    }
+    // indoors: optional, costly, absurdly overqualified
+    this.bumpGent(C.GUN_GENT); this.bumpCred(C.GUN_CRED);
+    if (this.insp && !this.insp.done) { this.insp.viol += C.GUN_INSP; this.push({ k: 'inspsaw' }); }
+    if (this.cust.some(c => c.ty === 'sequoia' && !['leave', 'out'].includes(c.st))) { this.bumpGent(C.SEQ_GENT_CLIP); this.queueReview('r_seq_fire'); this.push({ k: 'seqclip' }); }
+    for (const cu of [...this.cust]) {
+      if (cu.ty === 'dale') continue; // Dale sips his coffee. Unbothered. That is the whole joke.
+      if (['leave', 'out', 'drag', 'air'].includes(cu.st)) continue;
+      this.dropTicket(cu.party);
+      this.sendHome(cu);
+    }
+    this.tickets = this.tickets.filter(t => t.dale);
+    // something fragile always gives up
+    for (const it of this.items.filter(i => !i.holder && ['mug', 'dish', 'plate'].includes(i.k)).slice(0, 2)) {
+      this.push({ k: 'break', x: it.x, z: it.z, s: p.seat }); this.stats.broken++; this.pst(p.seat).br++;
+      if (it.k === 'mug') this.addSpill(it.x, it.z);
+      it.k = 'shard'; it.ttl = C.SHARD_TTL; it.vx = it.vz = it.vy = 0;
+    }
+    // the pigs want no part of this either
+    for (const pg of this.pigs) if (pg.st === 'loose') { pg.flee = true; pg.eatT = 0; pg.meal = null; }
+    this.queueReview('r_gun');
   }
   // the callout: ONE button that reads the room (last-local's C). Sim-side so
   // every client sees the same beacon; the priority order is the danger order.
@@ -1698,6 +1924,8 @@ export class Sim {
     this._larpDone = 0; this._kaleDone = 0; this._seqDone = 0;
     this.spills = []; this.mopOut = false; this._sinkDrip = 0; this._sinkWarned = false;
     this.insp = null;
+    this.pigInit();
+    for (const p of this.players.values()) p.heldPig = null;
     this.drcInit();
     if (this._contagionNext) { this.flockQ = C.CONTAGION_FLOCKS; this._contagionNext = false; this.push({ k: 'contagion' }); }
     this.reviews = []; this.rentE = this.carry;
@@ -1741,6 +1969,8 @@ export class Sim {
       fi: this.fires.map(f => ({ x: R2(f.x), z: R2(f.z), hp: R2(f.hp) })),
       spl: this.spills.map(s => ({ i: s.id, x: R2(s.x), z: R2(s.z) })),
       mo: this.mopOut ? 1 : 0,
+      pg: this.pigs.map(q => ({ i: q.id, x: R2(q.x), y: R2(q.y || 0), z: R2(q.z), yw: R2(q.yaw || 0), st: q.st, in: q.inside ? 1 : 0, et: q.eatT > 0 ? 1 : 0 })),
+      gt: this.gate === 'broken' ? 1 : 0, gsh: this.gunShells, go: this.gunOut ? 1 : 0,
       tk: this.tickets.map(t => ({
         i: t.id, tb: t.table, sl: t.stool,
         ln: t.ln.map(l => ({ d: t.kale && !l.ok ? '?' : l.d, ok: l.ok ? 1 : 0 })),

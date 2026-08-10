@@ -178,6 +178,16 @@ export function sfx(k, x, z) {
     case 'insppass': [0, 4, 7].forEach((s2, i) => setTimeout(() => tone(784 * Math.pow(2, s2 / 12), 0, 0.18, 'triangle', 0.12), i * 110)); break;
     case 'inspwarn': tone(392, 370, 0.3, 'sawtooth', 0.09); break;
     case 'inspcite': [311, 294, 233].forEach((f, i) => setTimeout(() => tone(f, f * 0.97, 0.3, 'sawtooth', 0.11), i * 220)); break;
+    case 'boom': noise(1.2, 0.6, 40, 900, x, z); tone(60, 28, 0.9, 'sawtooth', 0.4, x, z, 'exp'); setTimeout(() => noise(0.6, 0.25, 200, 1600, x, z), 180); break;
+    case 'gunclick': tone(1400, 1100, 0.04, 'square', 0.12, x, z); break;
+    case 'gungrab': noise(0.08, 0.16, 800, 2400, x, z); setTimeout(() => noise(0.08, 0.16, 700, 2200, x, z), 140); break; // shk-shk
+    case 'gatebreak': noise(0.3, 0.3, 200, 1400, x, z); tone(180, 90, 0.3, 'square', 0.12, x, z, 'exp'); break;
+    case 'gatefixed': [0, 1, 2].forEach(i => setTimeout(() => { tone(220, 180, 0.08, 'square', 0.14); noise(0.05, 0.1, 400, 1600); }, i * 160)); break;
+    case 'pigscoop': tone(520, 720, 0.12, 'sawtooth', 0.14, x, z); break; // oink up
+    case 'pigsquirm': tone(680, 480, 0.14, 'sawtooth', 0.15, x, z); break;
+    case 'pigyeet': tone(760, 1080, 0.3, 'sawtooth', 0.16, x, z); break;  // squeeeee
+    case 'pigate': noise(0.18, 0.12, 300, 900, x, z); setTimeout(() => noise(0.14, 0.1, 260, 800, x, z), 160); break;
+    case 'pighome': tone(440, 560, 0.1, 'sawtooth', 0.1, x, z); setTimeout(() => tone(560, 480, 0.12, 'sawtooth', 0.09, x, z), 120); break;
     case 'openfault': noise(0.2, 0.2, 1400, 4200); tone(2200, 1100, 0.14, 'square', 0.05); break;
     case 'busin': noise(0.8, 0.14, 200, 900); tone(155, 110, 0.5, 'sawtooth', 0.1, x, z, 'exp'); break;
     case 'buswarn': tone(233, 233, 0.18, 'sawtooth', 0.12); setTimeout(() => tone(233, 233, 0.18, 'sawtooth', 0.12), 240); break;

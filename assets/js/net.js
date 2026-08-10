@@ -55,7 +55,7 @@ export class Net {
     const now = performance.now();
     if (s !== this._lastSent || now - (this._lastForce || 0) > 250) {
       this._lastSent = s; this._lastForce = now;
-      this.send({ t: 'in', x: i.x, z: i.z, fx: i.fx, fz: i.fz, a: i.a, th: i.th, ah: i.ah, sp: i.sp, co: i.co, ab: i.ab });
+      this.send({ t: 'in', x: i.x, z: i.z, fx: i.fx, fz: i.fz, a: i.a, th: i.th, ah: i.ah, sp: i.sp, co: i.co, ab: i.ab, gn: i.gn });
     }
   }
   send(o) { if (this.open) { try { this.ws.send(JSON.stringify(o)); } catch {} } }
