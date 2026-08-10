@@ -76,6 +76,27 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   .tkt .dnames { font-size: 11px; font-weight: 700; color: #4a3a28; letter-spacing: .02em; margin-top: 1px; }
   #abchip.ready { background: #3f6e36; color: #eaffe2; }
   #abchip.buff { background: #c49222; color: #2c2416; }
+  /* the objective line: one sentence, the single most worth-doing thing */
+  #objective { position: fixed; top: 46px; left: 50%; transform: translateX(-50%); z-index: 31;
+               padding: 4px 16px; background: rgba(26,18,11,.82); border: 1px solid rgba(143,184,173,.4);
+               border-radius: 14px; font-size: 13px; color: var(--cream); white-space: nowrap;
+               max-width: 92vw; overflow: hidden; pointer-events: none; display: none; }
+  #objective b { color: var(--gold); }
+  #objective.hot { border-color: var(--red); color: #ffd6cc; }
+  /* six tracks + attributed swings on the season card */
+  #e-tracks { margin: 8px 0 2px; }
+  .etr { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .06em; color: #6b5a44; margin: 3px 0; }
+  .etr span { width: 92px; text-align: right; }
+  .etr b { width: 26px; font-size: 11px; }
+  .etr .bar { flex: 1; height: 6px; background: rgba(0,0,0,.12); border-radius: 3px; overflow: hidden; }
+  .etr .bar i { display: block; height: 100%; border-radius: 3px; background: #8a8f98; }
+  .etr.cash .bar i { background: #5c9e4f; } .etr.hosp .bar i { background: #e8b53a; }
+  .etr.loy .bar i { background: #6d8177; } .etr.gent .bar i { background: #b58cc9; }
+  .etr.heat .bar i { background: #d94f38; } .etr.chaos .bar i { background: #c49222; }
+  #e-swings .srow { font-size: 12px; margin: 2px 0; color: #4a3a28; }
+  #e-swings .srow b { color: #2c2016; }
+  #e-swings .yhead, #e-yowl .yhead { font-weight: 800; letter-spacing: .08em; font-size: 11px; text-transform: uppercase; opacity: .7; margin: 8px 0 3px; }
+  #prep .pswings { font-size: 11.5px; font-style: italic; color: #5a4a36; margin-top: 4px; }
   #count { position: fixed; inset: 0; display: none; z-index: 45; pointer-events: none; text-align: center; font-size: 30vh; font-weight: 900; color: var(--white); text-shadow: 0 10px 40px rgba(0,0,0,.6); line-height: 100vh; }
   #endcard { background: rgba(30,22,14,.82); flex-direction: column; gap: 10px; padding: 18px; display: none; z-index: 50; }
   #e-card { background: var(--cream); border: 5px solid var(--woodd); border-radius: 18px; padding: 22px 26px; max-width: 460px; width: 100%; max-height: 92vh; overflow: auto; box-shadow: 0 16px 50px rgba(0,0,0,.6); }
@@ -167,6 +188,7 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   <div class="chip" id="mic" style="display:none;pointer-events:auto;cursor:pointer"></div>
 </div>
 <div id="firevig"></div>
+<div id="objective"></div>
 <div id="bite">❗</div>
 <div id="cross"></div>
 <div id="lockhint" style="display:none"><div>CLICK TO LOOK AROUND<span>mouse aims · WASD moves · V for overhead view</span></div></div>
@@ -197,6 +219,8 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
     <div id="e-title"></div>
     <div id="e-sub"></div>
     <div id="e-rows"></div>
+    <div id="e-tracks"></div>
+    <div id="e-swings"></div>
     <div id="e-blame"></div>
     <div id="e-yowl"></div>
     <button id="again"></button>
@@ -221,6 +245,6 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
 <div class="tbtn" id="btnA">A</div>
 <div class="tbtn" id="btnB">✋</div>
 <div id="dev"></div>
-<script type="module" src="./assets/js/main.js?v=r8"></script>
+<script type="module" src="./assets/js/main.js?v=r9"></script>
 </body>
 </html>

@@ -309,6 +309,8 @@ function applySnap(s) {
     $('stock').textContent = `🐟 ${st2.t} · 🫐 ${st2.h}`;
     $('stock').style.display = (st2.t + st2.h > 0 || s.ph === 'supply') ? '' : 'none';
   }
+  // the objective line: one sentence, the single most worth-doing thing (§34 order)
+  updateObjective(s);
   // your ability chip (outside hudKey — the cooldown ticks every second)
   const meP = mySeat >= 0 && s.pl.find(q => q.i === mySeat);
   if (meP && meP.h && meP.h.k === 'gun') {
@@ -351,7 +353,9 @@ function renderPrep(s) {
     $('p-title').textContent = `${STR.days[Math.min(2, sum.day - 1)]} ${STR.prepTitle}`;
     $('p-sum').innerHTML = [
       [STR.prepEarnedLbl, '$' + sum.earned], [STR.prepRentLbl, '$' + sum.target], [STR.prepCarryLbl, '$' + sum.carry],
-    ].map(r => `<div class="row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
+    ].map(r => `<div class="row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('')
+      + ((sum.swings && sum.swings.length)
+        ? `<div class="pswings">${sum.swings.map(sw => (STR.swings[sw.k] || '').replace('{N}', sw.n).replace('{C}', sw.c)).join(' · ')}</div>` : '');
     $('p-pick').textContent = STR.prepPick;
     $('p-cards').innerHTML = pr.off.map((id, i) => {
       const sp = STR.specials[id] || { n: id, d: '' };
@@ -408,6 +412,42 @@ function updateLabels() {
   }
 }
 
+let _objHtml = '';
+function updateObjective(s) {
+  const el = $('objective');
+  let html = '', hot = false;
+  const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
+  if (s.ph === 'supply') html = STR.obj.supply.replace('{T}', mmss(Math.max(0, s.sy || 0)));
+  else if (s.ph === 'close') html = STR.obj.close;
+  else if (s.ph === 'shift') {
+    const pigsIn = (s.pg || []).some(q => q.in);
+    const inspHere = s.cu.some(c => c.ty === 'inspector' && !['leave', 'out'].includes(c.st));
+    if (s.fi.length) { html = STR.obj.fire; hot = true; }
+    else if (inspHere && ((s.spl || []).length || pigsIn)) { html = STR.obj.insp; hot = true; }
+    else if (pigsIn) html = STR.obj.pigs;
+    else if (s.gt) html = STR.obj.gate;
+    else if (s.bt > 0) { html = STR.obj.bus.replace('{T}', s.bt + 's'); hot = s.bt <= C.BUS_WARN; }
+    else {
+      const worst = (s.tk || []).filter(t => !t.dale).sort((a, b) => a.pa - b.pa)[0];
+      if (worst && worst.pa < 0.25) { html = STR.obj.table.replace('{N}', worst.tb != null ? `${STR.tableTag} ${worst.tb + 1}` : STR.stoolTag); hot = true; }
+      else if (s.cu.some(c => c.ty === 'squatter' && ['squat', 'reseat'].includes(c.st))) html = STR.obj.squat;
+      else if (s.st.sk.sh <= 2 && s.st.sk.d > 0) html = STR.obj.plates;
+      else if (s.st.sk.d > 6) html = STR.obj.dishpit;
+      else if (s.tk && s.tk.length) {
+        const d = s.tk[0].ln.filter(l => !l.ok).map(l => l.d === '?' ? '?' : STR.dishShort[l.d]).slice(0, 3).join(' + ');
+        html = d ? STR.obj.cook.replace('{D}', d) : STR.obj.greet;
+      } else html = STR.obj.greet;
+    }
+  }
+  const out = html ? html : '';
+  if (out !== _objHtml) {
+    _objHtml = out;
+    el.innerHTML = out;
+    el.style.display = out ? 'block' : 'none';
+  }
+  el.classList.toggle('hot', hot);
+}
+
 function confetti() {
   const host = $('endcard');
   for (let i = 0; i < 36; i++) {
@@ -433,8 +473,20 @@ function showEndcard(ec) {
     [`${STR.shiftN}`, `${ec.day} ${STR.ofN} ${C.SEASON_SHIFTS}`],
     [STR.earned, '$' + ec.earned], [STR.target, '$' + ec.target], [STR.served, ec.served],
     [STR.broken, ec.broken], [STR.fires, ec.fires], [STR.yeets, ec.yeets], [STR.lost, ec.lost],
-    [STR.credChip, ec.cred + '%'], [STR.gentChip, ec.gent + '%'],
   ].map(r => `<div class="row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
+  // the six tracks (last-local's card): no single score is "good"
+  if (ec.tracks) {
+    const T = ec.tracks;
+    $('e-tracks').innerHTML = [
+      ['cash', STR.trk.cash, T.cash], ['hosp', STR.trk.hosp, T.hosp], ['loy', STR.trk.cred, T.cred],
+      ['gent', STR.trk.gent, T.gent], ['heat', STR.trk.heat, T.heat], ['chaos', STR.trk.chaos, T.chaos],
+    ].map(([cls, lb, v]) => `<div class="etr ${cls}"><span>${lb}</span><div class="bar"><i style="width:${Math.max(2, Math.min(100, v))}%"></i></div><b>${v}</b></div>`).join('');
+  } else $('e-tracks').innerHTML = '';
+  // the attributed swings: every number has a name on it
+  $('e-swings').innerHTML = (ec.swings && ec.swings.length)
+    ? `<div class="yhead">${STR.swingsHead}</div>` + ec.swings.map(sw =>
+      `<div class="srow">${(STR.swings[sw.k] || '{N} ×{C}').replace('{N}', `<b>${sw.n}</b>`).replace('{C}', sw.c)}</div>`).join('')
+    : '';
   const revs = (ec.reviews || []).map(k => STR.reviews[k]).filter(Boolean);
   $('e-yowl').innerHTML = revs.length ? `<div class="yhead">${STR.yowlHead}</div>` + revs.map(r =>
     `<div class="rev"><span class="stars">${'★'.repeat(r.s)}${'☆'.repeat(5 - r.s)}</span>${r.t}</div>`).join('') : '';

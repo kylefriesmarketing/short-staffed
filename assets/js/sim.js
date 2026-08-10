@@ -583,8 +583,9 @@ export class Sim {
     I.done = true;
     const v = Math.round(I.viol);
     if (v <= C.INSP_PASS) { this.bumpCred(C.INSP_CRED_PASS); this.queueReview('r_inspect_pass'); this.push({ k: 'insppass', v }); }
-    else if (v <= C.INSP_CITE) { this.bumpCred(-C.INSP_CRED_WARN); this.queueReview('r_inspect_warn'); this.push({ k: 'inspwarn', v }); }
+    else if (v <= C.INSP_CITE) { this.inspWarns = (this.inspWarns || 0) + 1; this.bumpCred(-C.INSP_CRED_WARN); this.queueReview('r_inspect_warn'); this.push({ k: 'inspwarn', v }); }
     else {
+      this.inspCites = (this.inspCites || 0) + 1;
       this.rentE = Math.max(0, this.rentE - C.INSP_FINE);
       this.bumpCred(-C.INSP_CRED_FAIL); this.bumpGent(C.INSP_GENT_FAIL);
       this.queueReview('r_inspect_fail');
@@ -1388,7 +1389,32 @@ export class Sim {
   seqPost() {
     this.bumpGent(C.SEQ_GENT_POST);
     this._contagionNext = true;
+    this._seqPosts = (this._seqPosts || 0) + 1;
     this.push({ k: 'seqpost' });
+  }
+  // ── the six-track aftermath (last-local's card, diner tracks) ─────────────
+  aftermath() {
+    const sumP = k => Object.values(this.pstats || {}).reduce((a, s) => a + (s[k] || 0), 0);
+    const servedLost = this.stats.served + this.stats.lost;
+    const tracks = {
+      cash: Math.min(100, Math.round(100 * this.rentE / Math.max(1, this.rentTg))),
+      cred: Math.round(this.cred),
+      gent: Math.round(this.gent),
+      hosp: servedLost ? Math.round(100 * this.stats.served / servedLost) : 100,
+      heat: Math.min(100, this.stats.fires * 8 + (this.gunIndoor || 0) * 15 + (this.inspCites || 0) * 25 + (this.inspWarns || 0) * 10 + (this._seqPosts || 0) * 10),
+      chaos: Math.min(100, this.stats.broken * 4 + this.stats.yeets * 5 + sumP('sl') * 3 + sumP('td') * 6 + sumP('bg') * 4 + sumP('fy') * 5 + (this.gunIndoor || 0) * 10),
+    };
+    // the attributed swings: every number on this card has a NAME on it
+    const W = { sv: 3, td: 8, fi: 12, br: 4, yt: 7, fy: 7, sl: 3, hu: 5, su: 5, mo: 3, bg: 6, gs: 14, ph2: 6, ca: 4 };
+    const swings = [];
+    for (const [seat, s] of Object.entries(this.pstats || {})) {
+      for (const [k, w] of Object.entries(W)) {
+        const n = s[k] || 0;
+        if (n > 0) swings.push({ n: s.name, k, c: n, w: n * w });
+      }
+    }
+    swings.sort((a, b) => b.w - a.w);
+    return { tracks, swings: swings.slice(0, 8) };
   }
   serveTicket(p, match) {
     const kindOf = it => it.k === 'dish' ? it.dish : it.k === 'mug' ? it.fill : null;
@@ -1766,6 +1792,7 @@ export class Sim {
       return;
     }
     // indoors: optional, costly, absurdly overqualified
+    this.gunIndoor = (this.gunIndoor || 0) + 1;
     this.bumpGent(C.GUN_GENT); this.bumpCred(C.GUN_CRED);
     if (this.insp && !this.insp.done) { this.insp.viol += C.GUN_INSP; this.push({ k: 'inspsaw' }); }
     if (this.cust.some(c => c.ty === 'sequoia' && !['leave', 'out'].includes(c.st))) { this.bumpGent(C.SEQ_GENT_CLIP); this.queueReview('r_seq_fire'); this.push({ k: 'seqclip' }); }
@@ -1864,6 +1891,7 @@ export class Sim {
       carry: made ? Math.round(this.rentE - this.rentTg) : 0,
       reviews: this.reviews.slice(0, 3),
     };
+    const am = this.aftermath();
     if (!made || this.day >= C.SEASON_SHIFTS) {
       this.ph = 'over';
       if (!made) this.queueReview('r_repo');
@@ -1872,11 +1900,13 @@ export class Sim {
         served: this.stats.served, broken: this.stats.broken, fires: this.stats.fires,
         yeets: this.stats.yeets, lost: this.stats.lost, cred: Math.round(this.cred), gent: Math.round(this.gent),
         crew: Object.entries(this.pstats || {}).map(([seat, s]) => Object.assign({ seat: +seat }, s)),
+        tracks: am.tracks, swings: am.swings,
       });
       this.push({ k: 'over', made });
     } else {
       // the evening supply run, then the specials draft
       this.carry = sum.carry;
+      sum.swings = am.swings.slice(0, 3);
       this.prep = { t: C.PREP_LEN, offer: this.draftSpecials(), picked: null, sum };
       this.ph = 'supply'; this.supplyT = C.SUPPLY_LEN;
       this.bushes = LAYOUT.huckBushes.map(() => C.HUCK_PICKS);
@@ -1971,6 +2001,7 @@ export class Sim {
       mo: this.mopOut ? 1 : 0,
       pg: this.pigs.map(q => ({ i: q.id, x: R2(q.x), y: R2(q.y || 0), z: R2(q.z), yw: R2(q.yaw || 0), st: q.st, in: q.inside ? 1 : 0, et: q.eatT > 0 ? 1 : 0 })),
       gt: this.gate === 'broken' ? 1 : 0, gsh: this.gunShells, go: this.gunOut ? 1 : 0,
+      bt: Math.ceil(this.busT || 0),
       tk: this.tickets.map(t => ({
         i: t.id, tb: t.table, sl: t.stool,
         ln: t.ln.map(l => ({ d: t.kale && !l.ok ? '?' : l.d, ok: l.ok ? 1 : 0 })),
