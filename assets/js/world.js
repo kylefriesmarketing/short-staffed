@@ -557,6 +557,46 @@ export class World {
     }
     // extinguisher wall mount plate
     m.add(GEO.box, 0xb03a2a, LAYOUT.extHook.x, 1.35, -6.95, 0.4, 0.55, 0.08);
+    // ── the clutter that makes a room look WORKED IN ──────────────────────
+    // A diner is never tidy. Every one of these is something a real Grubstake
+    // would have accumulated and nobody would have got round to removing.
+    // corkboard by the door: flyers, a lost dog, a band nobody has heard of
+    m.add(GEO.box, 0x8a6a44, 11.9, 1.75, 4.4, 0.08, 1.2, 2.0);
+    mp.add(GEO.box, 0xbfa87e, 11.84, 1.75, 4.4, 0.03, 1.05, 1.85);
+    for (let i = 0; i < 7; i++) {
+      const fy = 1.36 + (i % 3) * 0.36, fz = 3.7 + (i % 4) * 0.44;
+      mp.add(GEO.box, [PAL.white, 0xffe9b8, 0xdfeee4, 0xf6d9d2][i % 4], 11.8, fy, fz, 0.02, 0.26 + (i % 2) * 0.08, 0.3, 0, (i % 3 - 1) * 0.12, 0);
+    }
+    // hand-written specials board, propped where the customers see it
+    m.add(GEO.box, PAL.woodDark, 9.4, 1.5, 6.4, 1.5, 1.1, 0.09, 0.5);
+    mp.add(GEO.box, 0x27251f, 9.4, 1.5, 6.34, 1.28, 0.9, 0.05, 0.5);
+    for (let i = 0; i < 4; i++) mp.add(GEO.box, 0xe8e0cc, 9.4 - i * 0.02, 1.78 - i * 0.19, 6.31, 0.9 - (i % 2) * 0.3, 0.05, 0.03, 0.5);
+    // mugs hanging over the coffee station, and a spice rack by the griddle
+    for (let i = 0; i < 5; i++) {
+      m.add(GEO.box, PAL.steelDark, -2.5, 2.06, -6.5, 1.6, 0.05, 0.05);
+      mp.add(GEO.cyl, PAL.white, -3.1 + i * 0.32, 1.9, -6.5, 0.2, 0.24, 0.2);
+    }
+    m.add(GEO.box, PAL.wood, -9.6, 1.92, -6.72, 2.0, 0.07, 0.3);
+    for (let i = 0; i < 7; i++) mp.add(GEO.cyl, [0x9d4e35, 0xc9a227, 0x7a5a3a, 0xdcd6c8][i % 4], -10.4 + i * 0.27, 2.06, -6.72, 0.14, 0.24, 0.14);
+    // the ticket wheel at the pass — the most diner object there is
+    m.add(GEO.cyl, PAL.steelDark, 4.0, 1.28, -2.6, 0.06, 0.5, 0.06);
+    mt.add(GEO.cyl, PAL.steel, 4.0, 1.54, -2.6, 0.5, 0.05, 0.5, Math.PI / 2, 0, 0);
+    for (let i = 0; i < 6; i++) { const a = i * 1.047; mp.add(GEO.box, PAL.white, 4.0 + Math.sin(a) * 0.2, 1.54 + Math.cos(a) * 0.2, -2.54, 0.16, 0.2, 0.01); }
+    // a coffee pot on its warmer, a tip jar, a stack of menus, the newspaper
+    m.add(GEO.box, 0x2c2c30, -2.5, 1.06, -6.05, 0.42, 0.08, 0.34);
+    mp.add(GEO.cyl, 0x3a2a1c, -2.5, 1.25, -6.05, 0.28, 0.32, 0.28);
+    mp.add(GEO.box, PAL.white, -2.68, 1.3, -6.05, 0.05, 0.2, 0.16);
+    mp.add(GEO.cyl, 0xcfe3ea, 6.5, 1.16, -2.6, 0.3, 0.34, 0.3);      // tip jar
+    mp.add(GEO.cyl, 0x5c9e4f, 6.5, 1.12, -2.6, 0.26, 0.16, 0.26);
+    for (let i = 0; i < 5; i++) mp.add(GEO.box, [0xe8dcc0, 0xdfd3b6][i % 2], 7.4, 1.03 + i * 0.022, -2.6, 0.5, 0.02, 0.66, 0, (i - 2) * 0.05, 0);
+    for (let i = 0; i < 3; i++) mp.add(GEO.box, 0xdedad2, -0.6, 1.02 + i * 0.012, -2.55, 0.62, 0.012, 0.46, 0, 0.22, 0);
+    // hat + coats already by the door; add a boot tray and a folded high chair
+    m.add(GEO.box, 0x4a4238, 7.4, 0.05, 6.6, 1.0, 0.1, 0.6);
+    m.add(GEO.box, 0x6b4f33, 7.15, 0.2, 6.6, 0.22, 0.3, 0.34);
+    m.add(GEO.box, 0x6b4f33, 7.6, 0.2, 6.6, 0.22, 0.3, 0.34);
+    m.add(GEO.box, PAL.wood, -11.7, 0.55, 5.4, 0.5, 1.1, 0.5, 0.2);
+    // a fly strip nobody wants to talk about
+    m.add(GEO.cyl, 0xd8c078, -6.2, 2.42, -5.6, 0.05, 0.55, 0.05);
     // the view out the windows — worth the polygons now that you can see it
     for (const [mx, mz, s, c] of [[-16, -24, 9, PAL.mountain], [-2, -28, 12, PAL.mountainFar], [12, -25, 10, PAL.mountain], [24, -29, 13, PAL.mountainFar], [-27, -26, 11, PAL.mountainFar], [4, -22, 7, PAL.mountain]])
       m.add(GEO.cone, c, mx, s * 0.32, mz, s, s * 0.8, s);
@@ -1249,6 +1289,18 @@ export class World {
       larper: { shirt: 0x7a4a8a, pants: PAL.denim, shoe: 0x5a3a24, hair, hat: 'cowboy', hatC: 0xd8bc8a, brow: 0x5a4030, mouth: 0.12 },
       inspector: { shirt: 0x8a8a76, pants: 0x4a4f5c, shoe: 0x2c2620, hair: 0x4a3a2c, glasses: 0x3a3f4a, mouth: 0.08, brow: 0x3a2c20 },
     }[ty] || { shirt: PAL.gray, pants: 0x4a5a6a, shoe: 0x3a2f28, hair, brow: 0x5a4030 };
+    // ── per-person variation, derived from the id so it is stable ───────────
+    // Height, build, eye spacing, brow angle and mouth width all shift, plus a
+    // small tint on the shirt. Same archetype, different human.
+    const V = n => (id * 2654435761 >>> ((n * 7) % 20)) % 1000 / 1000;
+    K.scale = (K.scale ?? 1) * (0.93 + V(1) * 0.15);
+    K.girth = 0.9 + V(2) * 0.28;
+    K.eyeGap = 0.125 + V(3) * 0.032;
+    K.browTilt = (V(4) - 0.5) * 0.5;
+    if (K.mouth !== 0) K.mouth = 0.09 + V(5) * 0.07;
+    if (K.shirt != null) { const c = new THREE.Color(K.shirt); c.offsetHSL((V(6) - 0.5) * 0.05, (V(7) - 0.5) * 0.16, (V(8) - 0.5) * 0.14); K.shirt = c.getHex(); }
+    if (V(9) > 0.72 && !K.hoodie && !K.vest) K.scarf = [0x9d4e35, 0x3f5f3a, 0x8a5a8a, 0xc9a227][id % 4];
+    if (ty === 'camper' && V(10) > 0.5) K.pack = [0x4f6f46, 0x8a4a3a, 0x3a5a8a][id % 3];
     const g = human(Object.assign({ skin }, K));
     const u = g.userData;
     u.ty = ty;
@@ -1760,6 +1812,21 @@ export class World {
         f.vx += fx * 4; f.vz += fz * 4;
       }
     }
+    // ── what the room is looking at ────────────────────────────────────────
+    // One scene-wide "drama" point, in the order a person would actually care:
+    // fire, then livestock indoors, then somebody airborne. When it exists the
+    // WHOLE room turns to watch, which is the single most alive thing a crowd
+    // can do — and it means your disasters have an audience.
+    const dsnap = this.snap;
+    let drama = null;
+    if (dsnap) {
+      if (dsnap.fi && dsnap.fi.length) drama = { x: dsnap.fi[0].x, z: dsnap.fi[0].z, y: 1.4, kind: 'fire' };
+      else if (dsnap.pg) { const pin = dsnap.pg.find(q => q.in); if (pin) drama = { x: pin.x, z: pin.z, y: 0.5, kind: 'pig' }; }
+      if (!drama && dsnap.pl) { const fly = dsnap.pl.find(q => q.ar); if (fly) drama = { x: fly.x, z: fly.z, y: 1.6, kind: 'fly' }; }
+    }
+    if (drama && drama.kind !== this._dramaKind) { this._dramaKind = drama.kind; this._dramaT = 2.2; }
+    else if (!drama) this._dramaKind = null;
+    if (this._dramaT > 0) this._dramaT -= dt;
     // whoever is nearest gets looked at — customers track the staff, which is
     // most of what makes a room feel occupied rather than decorated
     let nearestCook = null;
@@ -1770,15 +1837,38 @@ export class World {
       g.position.z += (d.z - g.position.z) * lerpK;
       const u = g.userData;
       let lookAt = null;
-      if (['sit', 'wait', 'squat'].includes(d.st)) {
+      // drama outranks everything: the whole room rubbernecks
+      if (drama && d2(drama.x, drama.z, g.position.x, g.position.z) < 13 * 13) {
+        lookAt = drama;
+        if (this._dramaT > 0 && !v.reacted) {
+          v.reacted = 1;
+          this.emote(drama.kind === 'fire' ? '😱' : drama.kind === 'pig' ? '🐷' : '😮', g.position.x, g.position.z);
+        }
+      } else if (['sit', 'wait', 'squat'].includes(d.st)) {
+        v.reacted = 0;
         let best = null, bd = 7 * 7;
         for (const [, pv] of this.pl) {
           if (!pv.d || pv.d.off) continue;
           const dd = d2(pv.g.position.x, pv.g.position.z, g.position.x, g.position.z);
           if (dd < bd) { bd = dd; best = pv.g.position; }
         }
+        // nobody serving them? talk to whoever they came in with. Seatmates
+        // turning to each other is what makes a full table look like a party
+        // instead of two strangers facing the same wall.
+        if (!best) {
+          v.chatT = (v.chatT || 0) - dt;
+          if (v.chatT <= 0) { v.chatT = 3 + Math.random() * 5; v.chatOn = !v.chatOn; }
+          if (v.chatOn) {
+            for (const [, ov] of this.cu) {
+              if (ov === v || !ov.d || ov.d.i === d.i) continue;
+              if (ov.d.st !== d.st) continue;
+              if (d2(ov.g.position.x, ov.g.position.z, g.position.x, g.position.z) < 2.2 * 2.2) { best = ov.g.position; break; }
+            }
+          }
+        }
         lookAt = best;
-      } else if (d.st === 'eat' && v.food) lookAt = v.food.position;
+      } else if (d.st === 'eat' && v.food) { v.reacted = 0; lookAt = v.food.position; }
+      else v.reacted = 0;
       alive(u, g, dt, lerpK, lookAt);
       if (d.st === 'drag') { g.rotation.z += (1.35 - g.rotation.z) * lerpK; g.position.y = 0.5; u.armL.rotation.x = Math.sin(t * 14) * 1.2; u.armR.rotation.x = -Math.sin(t * 14) * 1.2; }
       else if (d.st === 'air') { g.rotation.z += dt * 9; g.position.y = d.y; }
@@ -2043,12 +2133,15 @@ function human(o) {
   const skin = o.skin ?? PAL.skin[0];
   const shirt = o.shirt ?? 0x9aa0a8, pants = o.pants ?? 0x4a5a6a, shoe = o.shoe ?? 0x3a2f28;
   const S = o.scale ?? 1;
+  const G = o.girth ?? 1;   // per-person build: nobody is the same shape
   // ---- torso (static) ----
   const b = new Merger(false);
-  b.add(GEO.box, pants, 0, 0.74, 0, 0.46, 0.3, 0.34);                       // hips
-  b.add(GEO.box, shirt, 0, 1.06, 0, 0.54, 0.48, 0.38);                      // chest
-  b.add(GEO.box, shirt, 0, 1.28, 0, 0.58, 0.14, 0.4);                       // shoulders
+  b.add(GEO.box, pants, 0, 0.74, 0, 0.46 * G, 0.3, 0.34 * G);               // hips
+  b.add(GEO.box, shirt, 0, 1.06, 0, 0.54 * G, 0.48, 0.38 * G);              // chest
+  b.add(GEO.box, shirt, 0, 1.28, 0, 0.58 * G, 0.14, 0.4 * G);               // shoulders
   b.add(GEO.cyl, skin, 0, 1.38, 0, 0.19, 0.14, 0.19);                       // neck
+  if (o.scarf) { b.add(GEO.box, o.scarf, 0, 1.33, 0, 0.5, 0.16, 0.42); b.add(GEO.box, o.scarf, 0.12, 1.16, 0.21, 0.13, 0.34, 0.06); }
+  if (o.pack) { b.add(GEO.box, o.pack, 0, 1.06, -0.26, 0.42, 0.5, 0.18); b.add(GEO.box, 0x3a3630, 0, 1.2, -0.34, 0.3, 0.1, 0.06); }
   if (o.apron) {                                                            // cook's apron + straps
     b.add(GEO.box, o.apron, 0, 0.92, 0.21, 0.44, 0.78, 0.05);
     b.add(GEO.box, o.apron, -0.13, 1.24, 0.2, 0.09, 0.2, 0.05);
@@ -2076,11 +2169,14 @@ function human(o) {
   }
   if (o.beard) h.add(GEO.box, o.beard, 0, -0.18, 0.16, 0.34, 0.12, 0.22);
   // eyes + brows, straight into the merged head
-  // set flush into the skull — spheres proud of the surface read as googly eyes
+  // set flush into the skull — spheres proud of the surface read as googly eyes.
+  // eye spacing / brow angle / mouth width vary per person: the cheapest way to
+  // stop a room of tourists reading as one tourist copy-pasted.
+  const eg = o.eyeGap ?? 0.14, bt = o.browTilt ?? 0;
   for (const s of [-1, 1]) {
-    h.add(GEO.sph, PAL.white, s * 0.14, 0.02, 0.225, 0.085, 0.1, 0.05);
-    h.add(GEO.sph, 0x22222a, s * 0.14, 0.02, 0.25, 0.05, 0.058, 0.035);
-    if (o.brow) h.add(GEO.box, o.brow, s * 0.14, 0.125, 0.235, 0.12, 0.03, 0.04);
+    h.add(GEO.sph, PAL.white, s * eg, 0.02, 0.225, 0.085, 0.1, 0.05);
+    h.add(GEO.sph, 0x22222a, s * eg, 0.02, 0.25, 0.05, 0.058, 0.035);
+    if (o.brow) h.add(GEO.box, o.brow, s * eg, 0.125, 0.235, 0.12, 0.03, 0.04, 0, 0, s * bt);
   }
   if (o.mouth !== 0) h.add(GEO.box, 0x8a4a44, 0, -0.16, 0.25, o.mouth || 0.12, 0.03, 0.04);
   head.add(h.build({ mat: charMat, cast: true }));
