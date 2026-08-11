@@ -75,6 +75,8 @@ function doJoin() {
   $('joinrow').classList.add('joined'); // collapse the picker; the panel stays for hint + invite
   world = new World($('c'));
   world.fp = fpMode; world.look = look;
+  // the town changing is a story beat, not scenery — say it out loud once
+  world.onGentStage = at => { const k = 'gent_' + at; if (STR.evToasts[k]) toast(STR.evToasts[k], 'll'); };
   setTimeout(lockPointer, 60);
   if (LOCAL) {
     localSim = new Sim((Date.now() / 1000 | 0) % 100000);
@@ -561,6 +563,7 @@ function onEvent(e) {
   if (e.k === 'tg' && STR.telegraphs[e.s]) toast(STR.telegraphs[e.s], 'tg');
   if (e.k === 'callout' && STR.callouts[e.w]) toast('📣 ' + nameOf(e.s) + ': ' + STR.callouts[e.w], 'tg');
   if (e.k === 'ability' && STR.abilityLines[e.e]) toast(STR.abilityLines[e.e].replace('{N}', nameOf(e.s)), 'money');
+  if (e.k === 'open' && e.wx && e.wx !== 'clear' && STR.evToasts['wx_' + e.wx]) setTimeout(() => toast(STR.evToasts['wx_' + e.wx], 'll'), 1400);
   if (e.k === 'tip') toast(`tip +$${e.a}`, 'money');
   if (e.k === 'picked' && STR.specials[e.s]) toast(STR.pickedToast + STR.specials[e.s].n, 'll');
   if (e.k === 'bought' && STR.upgrades[e.u]) toast(STR.boughtToast + STR.upgrades[e.u].n, 'money');

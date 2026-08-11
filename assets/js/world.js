@@ -560,12 +560,22 @@ export class World {
     // the view out the windows — worth the polygons now that you can see it
     for (const [mx, mz, s, c] of [[-16, -24, 9, PAL.mountain], [-2, -28, 12, PAL.mountainFar], [12, -25, 10, PAL.mountain], [24, -29, 13, PAL.mountainFar], [-27, -26, 11, PAL.mountainFar], [4, -22, 7, PAL.mountain]])
       m.add(GEO.cone, c, mx, s * 0.32, mz, s, s * 0.8, s);
-    m.add(GEO.box, 0x9aae86, 0, -0.3, -14, 60, 0.4, 16);                    // meadow beyond the lot
+    m.add(GEO.box, 0x9aae86, 0, -0.3, -14, 90, 0.4, 16);                    // meadow beyond the lot
     m.add(GEO.box, 0x8d8f8a, 0, -0.16, -9.4, 40, 0.3, 4.6);                 // gravel lot
-    for (let i = 0; i < 9; i++) {
-      const px = -13 + i * 3.4 + (i % 2) * 1.1, pz = -12.5 - (i % 3) * 2.6, s = 0.8 + (i % 4) * 0.22;
+    // ⚠️ pines live BEHIND the strip and out on the flanks. They used to stand
+    // at z −12.5…−17.7 across the middle — which is exactly where the road and
+    // the storefronts are now, so the town was hidden in a forest.
+    for (let i = 0; i < 14; i++) {
+      const flank = i % 2 ? 1 : -1;
+      const px = flank * (30 + (i % 5) * 4.5) + (i % 3) * 2.2;
+      const pz = -11 - (i % 4) * 3.4, s = 0.8 + (i % 4) * 0.22;
       m.add(GEO.cyl, PAL.woodDark, px, 0.7 * s, pz, 0.2, 1.5 * s, 0.2);
       m.add(GEO.cone, i % 2 ? 0x4f6f46 : 0x5c7a52, px, 2.2 * s, pz, 1.5 * s, 2.8 * s, 1.5 * s);
+    }
+    for (let i = 0; i < 10; i++) {  // treeline on the ridge behind the town
+      const px = -34 + i * 7.6 + (i % 3) * 1.8, pz = -21.5 - (i % 3) * 1.8, s = 1.1 + (i % 3) * 0.3;
+      m.add(GEO.cyl, PAL.woodDark, px, 0.7 * s, pz, 0.2, 1.5 * s, 0.2);
+      m.add(GEO.cone, i % 2 ? 0x46603f : 0x536e4a, px, 2.2 * s, pz, 1.5 * s, 2.8 * s, 1.5 * s);
     }
     m.add(GEO.box, 0x9a4a32, -6.5, 0.55, -9.6, 1.9, 0.9, 4.2);              // a truck in the lot
     m.add(GEO.box, 0x8a3f28, -6.5, 1.25, -10.4, 1.7, 0.7, 1.7);
@@ -631,7 +641,330 @@ export class World {
     this.spillMeshes = new Map();
     this.bubbles = new Map();
     this.buildYard();
+    this.buildTown();
     this.buildLife();
+  }
+
+  // ── ELKHORN, MONTANA (pop. 743 and falling) ────────────────────────────────
+  // Everything past the glass. Static strip + a living road + the gentrification
+  // staging: as 🏙️ climbs, the TOWN changes while your diner stays the same.
+  // That contrast is the whole game, so it is built to be seen from a stool.
+  buildTown() {
+    const t = new Merger();       // painted/rough town surfaces
+    const tg = new Merger(false); // town glow (windows, signs) — no baked AO
+    const ROAD = -13.2, WALK = -15.6, FRONT = -17.2;
+    // highway + shoulder + centre dashes
+    t.add(GEO.box, 0x4a4a50, 0, -0.14, ROAD, 90, 0.3, 4.2);
+    t.add(GEO.box, 0x8d8f8a, 0, -0.15, ROAD - 2.6, 90, 0.3, 1.2);
+    t.add(GEO.box, 0x8d8f8a, 0, -0.15, ROAD + 2.6, 90, 0.3, 1.2);
+    for (let x = -44; x < 44; x += 4) t.add(GEO.box, 0xe8d98a, x, -0.12, ROAD, 1.7, 0.3, 0.16);
+    t.add(GEO.box, 0xb8b2a4, 0, -0.13, WALK, 90, 0.3, 1.6);   // far sidewalk
+    // ── the strip. Each storefront is a box + roof + awning + a lit window.
+    // ⚠️ these read from 20 units away through a 2.7-wide window: pale, evenly
+    // lit boxes turn to mush. Weathered wood, a dark plinth, a shadowed
+    // recess and a saturated awning are what make them read as BUILDINGS.
+    // ⚠️⚠️ THE FACADE FACES THE DINER. `FRONT` is the block's CENTRE, so the
+    // side you can see from a stool is FRONT **+** half-depth. Building the
+    // shopfronts at FRONT − 2.2 put every awning, sign and window on the back
+    // wall and left the town as blank tan boxes — which is exactly what it
+    // looked like. South-facing is +z here.
+    const shop = (x, w, h, body, roof, awn, sign, signCol) => {
+      const F = FRONT + 2.2;                                                     // the face you see
+      t.add(GEO.box, body, x, h / 2, FRONT, w, h, 4.4);
+      t.add(GEO.box, 0x5a5148, x, 0.22, F + 0.01, w, 0.44, 0.14);                // dark plinth
+      t.add(GEO.box, roof, x, h + 0.2, FRONT, w + 0.6, 0.4, 4.9);                // heavy cornice
+      t.add(GEO.box, 0x3f3a34, x, h * 0.36, F - 0.04, w * 0.72, h * 0.42, 0.1);  // shopfront recess
+      tg.add(GEO.box, 0xffd489, x, h * 0.34, F + 0.04, w * 0.5, h * 0.24, 0.1);  // lit glass
+      t.add(GEO.box, awn, x, h * 0.6, F + 0.25, w * 0.9, 0.24, 1.3);             // awning, projecting
+      t.add(GEO.box, 0x2e2a26, x, h * 0.49, F + 0.3, w * 0.9, 0.1, 1.3);         // its shadow line
+      for (const px of [-w * 0.42, w * 0.42]) t.add(GEO.cyl, 0x6b5540, x + px, h * 0.3, F + 0.25, 0.07, h * 0.6, 0.07);
+      if (sign) {
+        t.add(GEO.box, signCol, x, h * 0.86, F + 0.06, w * 0.74, h * 0.22, 0.16);
+        t.add(GEO.box, 0xe8e0cc, x, h * 0.86, F + 0.15, w * 0.5, h * 0.07, 0.06); // lettering bar
+      }
+    };
+    // gas station (west end): canopy on posts + the tall price sign
+    t.add(GEO.box, 0xc0baa8, -25, 1.5, FRONT, 5, 3, 4);
+    t.add(GEO.box, 0xa8321f, -25, 3.3, FRONT, 5.6, 0.56, 4.4);
+    tg.add(GEO.box, 0xffe0a0, -25, 1.2, FRONT + 2.05, 3.2, 1.5, 0.1);
+    t.add(GEO.box, 0xe4e0d6, -19.5, 2.6, ROAD - 2.2, 7.5, 0.4, 5);        // pump canopy
+    for (const px of [-22.6, -16.4]) for (const pz of [ROAD - 4.2, ROAD - 0.4]) t.add(GEO.cyl, 0xb8b2a4, px, 1.3, pz, 0.22, 2.6, 0.22);
+    for (const px of [-21, -18]) { t.add(GEO.box, 0xdcd6c8, px, 0.55, ROAD - 2.2, 0.5, 1.1, 0.9); t.add(GEO.box, 0x9a3a2a, px, 1.18, ROAD - 2.2, 0.54, 0.2, 0.94); }
+    t.add(GEO.cyl, 0xb8b2a4, -14.5, 3.2, ROAD - 3.4, 0.2, 6.4, 0.2);      // sign pole
+    t.add(GEO.box, 0xf0ece2, -14.5, 6.6, ROAD - 3.4, 2.6, 1.9, 0.2);
+    tg.add(GEO.box, 0xc44536, -14.5, 7.05, ROAD - 3.5, 2.2, 0.7, 0.1);
+    // the strip proper (x from west to east)
+    shop(-9, 5.4, 3.4, 0x9a7448, 0x4f3a26, 0x8a3428, 1, 0x4a2c1e);        // HARDWARE (gentrifies)
+    shop(-2.4, 4.6, 3.0, 0xb0a488, 0x5f5340, 0x35603a, 1, 0x27401f);      // feed & seed
+    shop(4.5, 5.2, 3.2, 0xa2947c, 0x4f3a26, 0x2a4a7a, 1, 0x1f3352);       // laundromat
+    // motel: long low block + a tall neon-ish sign
+    t.add(GEO.box, 0xa89c86, 14, 1.5, FRONT + 0.6, 9, 3, 4);
+    t.add(GEO.box, 0x5f5340, 14, 3.2, FRONT + 0.6, 9.6, 0.42, 4.5);
+    t.add(GEO.box, 0x4a4238, 14, 0.24, FRONT + 2.62, 9, 0.48, 0.14);
+    for (let i = 0; i < 4; i++) tg.add(GEO.box, 0xffe0a8, 10.6 + i * 2.2, 1.4, FRONT + 2.65, 0.9, 1.1, 0.12);
+    for (let i = 0; i < 4; i++) t.add(GEO.box, 0x4a4238, 10.6 + i * 2.2, 1.4, FRONT + 2.6, 1.1, 1.3, 0.1);
+    t.add(GEO.cyl, 0xb8b2a4, 20.5, 3.4, ROAD - 3.2, 0.22, 6.8, 0.22);
+    this.motelSign = mesh(GEO.box, M(0x3a5a8a, { e: 0.55 }), 20.5, 7.0, ROAD - 3.2, 3.2, 2.1, 0.22);
+    this.scene.add(this.motelSign);
+    // power poles + the wire sag
+    for (let i = -4; i <= 4; i++) {
+      const px = i * 11;
+      t.add(GEO.cyl, 0x6b5540, px, 3.4, ROAD + 2.9, 0.18, 6.8, 0.18);
+      t.add(GEO.box, 0x6b5540, px, 6.3, ROAD + 2.9, 2.2, 0.16, 0.16);
+      if (i < 4) for (let k = 0; k < 5; k++) {
+        const f = k / 4, x0 = px, x1 = px + 11;
+        const wx = x0 + (x1 - x0) * f, sag = Math.sin(f * Math.PI) * 0.5;
+        t.add(GEO.box, 0x3a3630, wx, 6.22 - sag, ROAD + 2.9, 11 / 4 + 0.1, 0.05, 0.05);
+      }
+    }
+    // water tower on the ridge
+    t.add(GEO.cyl, 0xb0b8b4, -30, 8.4, -23, 2.6, 3.2, 2.6);
+    t.add(GEO.cone, 0xa0a8a4, -30, 10.4, -23, 2.7, 1.4, 2.7);
+    for (const [lx, lz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) t.add(GEO.cyl, 0x9aa29e, -30 + lx, 3.4, -23 + lz, 0.16, 6.8, 0.16);
+    this.scene.add(t.build({ r: 0.9, cast: false, recv: false }));
+    // ⚠️ the town's windows are EMISSIVE WHITE. Left at full strength they
+    // bloom into one flat band and erase the whole strip in daylight — the
+    // lights have to come on with the evening, which is what they'd do anyway.
+    this.townGlow = tg.build({ r: 0.5, e: 1.5, recv: false });
+    // ⚠️ Merger's `e` option hard-codes emissive to WHITE, so a "warm" vertex
+    // colour still glows like a searchlight. Retint it to sodium-lamp amber.
+    this.townGlow.material.emissive.setHex(0xffb45e);
+    this.scene.add(this.townGlow);
+
+    // ── the living road: trucks and cars that actually pass ──────────────────
+    this.traffic = [];
+    for (let i = 0; i < 5; i++) {
+      const g = new THREE.Group();
+      const body = mesh(GEO.box, M(0x9a4a32), 0, 0.62, 0, 4.2, 0.78, 1.9);
+      const cab = mesh(GEO.box, M(0x8a3f28), -0.9, 1.28, 0, 1.7, 0.68, 1.8);
+      const glass = mesh(GEO.box, M(0xbcd8e0, { r: 0.2, m: 0.4 }), -0.9, 1.34, 0, 1.5, 0.4, 1.62);
+      g.add(body, cab, glass);
+      for (const [wx, wz] of [[-1.3, -0.95], [-1.3, 0.95], [1.3, -0.95], [1.3, 0.95]])
+        g.add(mesh(GEO.cyl, M(0x2c2c30), wx, 0.34, wz, 0.4, 0.26, 0.4, 0, 0, Math.PI / 2));
+      g.userData = { body, cab, t: -1 };
+      g.visible = false;
+      this.scene.add(g);
+      this.traffic.push(g);
+    }
+    this.trafficT = 1 + Math.random() * 3;
+    // ── people on the far sidewalk (small, distant, but they MOVE) ───────────
+    this.walkers = [];
+    for (let i = 0; i < 4; i++) {
+      const g = new THREE.Group();
+      const coat = mesh(GEO.box, M([0x5b7292, 0x9d4e35, 0x4f7a4a, 0x6a6a62][i % 4]), 0, 0.62, 0, 0.42, 0.78, 0.3);
+      const head = mesh(GEO.sph, M(PAL.skin[i % 4]), 0, 1.16, 0, 0.34, 0.34, 0.34);
+      const legL = mesh(GEO.box, M(0x3a3f4a), -0.1, 0.16, 0, 0.15, 0.5, 0.15);
+      const legR = mesh(GEO.box, M(0x3a3f4a), 0.1, 0.16, 0, 0.15, 0.5, 0.15);
+      g.add(coat, head, legL, legR);
+      g.userData = { legL, legR, ph: Math.random() * 6.28, t: -1 };
+      g.visible = false;
+      this.scene.add(g);
+      this.walkers.push(g);
+    }
+    this.walkerT = 2 + Math.random() * 4;
+
+    // ── THE GENTRIFICATION STAGES ───────────────────────────────────────────
+    // Keyed to the 🏙️ meter. Your diner never changes. The town does.
+    const stage = (at, build) => { const g = new THREE.Group(); build(g); g.visible = false; this.scene.add(g); return { at, g }; };
+    this.gentStages = [
+      // 18 — the hardware store loses its lease
+      stage(18, g => {
+        g.add(mesh(GEO.box, M(0xf0ece2), -9, 2.0, FRONT + 2.32, 2.1, 1.2, 0.1));
+        g.add(mesh(GEO.box, M(0xc44536), -9, 2.32, FRONT + 2.38, 1.8, 0.28, 0.06));
+        g.add(mesh(GEO.box, M(0xc44536), -9, 1.86, FRONT + 2.38, 1.5, 0.22, 0.06));
+      }),
+      // 34 — scaffolding goes up on the feed store
+      stage(34, g => {
+        for (const px of [-4.3, -0.5]) g.add(mesh(GEO.cyl, M(0xc9c2b0), px, 1.9, FRONT + 2.6, 0.09, 3.8, 0.09));
+        for (const py of [1.1, 2.2, 3.3]) g.add(mesh(GEO.box, M(0xc9c2b0), -2.4, py, FRONT + 2.6, 4.1, 0.1, 0.1));
+        g.add(mesh(GEO.box, M(0x8fb8ad, { t: 0.55 }), -2.4, 2.2, FRONT + 2.66, 4.0, 3.4, 0.05));
+      }),
+      // 50 — the hardware store is now a juice bar
+      stage(50, g => {
+        g.add(mesh(GEO.box, M(0xf4f0e6), -9, 1.7, FRONT + 2.26, 5.0, 3.2, 0.16));   // white reface
+        g.add(mesh(GEO.box, M(0x9fd8b4), -9, 1.9, FRONT + 2.5, 4.7, 0.26, 1.2));    // pale green awning
+        g.add(mesh(GEO.box, M(0x2c3a30, { e: 0.4 }), -9, 2.72, FRONT + 2.38, 3.4, 0.66, 0.12));
+        g.add(mesh(GEO.box, M(0xbfe8cc, { e: 0.9 }), -9, 2.72, FRONT + 2.46, 2.6, 0.2, 0.06));
+      }),
+      // 66 — a crane, and the frame of something taller than anything in town.
+      // It goes up on the EAST end of the strip, in frame from the dining room.
+      stage(66, g => {
+        g.add(mesh(GEO.cyl, M(0xe8b53a), 25, 7, -18.6, 0.34, 14, 0.34));
+        g.add(mesh(GEO.box, M(0xe8b53a), 22.4, 13.4, -18.6, 9.5, 0.34, 0.34));
+        g.add(mesh(GEO.box, M(0xe8b53a), 27.6, 13.9, -18.6, 0.3, 1.3, 0.3));
+        g.add(mesh(GEO.box, M(0x3a3630), 19.4, 12.4, -18.6, 0.05, 2.2, 0.05));
+        g.add(mesh(GEO.box, M(0x8a8f98), 19.4, 11.0, -18.6, 1.2, 0.7, 1.2));
+        for (let f = 0; f < 3; f++) {
+          g.add(mesh(GEO.box, M(0xa8a49a), 25, 1.4 + f * 2.6, -18.6, 8.5, 0.28, 5));
+          for (const cx of [21.2, 25, 28.8]) g.add(mesh(GEO.cyl, M(0x9a968c), cx, 1.4 + f * 2.6 + 1.3, -18.6, 0.22, 2.6, 0.22));
+        }
+      }),
+      // 82 — the banner, the boutique, and the SUVs have arrived
+      stage(82, g => {
+        g.add(mesh(GEO.box, M(0xf4f0e6), 25, 9.6, -16.2, 9, 3.4, 0.14));
+        g.add(mesh(GEO.box, M(0x3a5a8a, { e: 0.35 }), 25, 10.2, -16.12, 7.6, 1.1, 0.08));
+        g.add(mesh(GEO.box, M(0xc9a227, { e: 0.3 }), 25, 8.9, -16.12, 5.2, 0.6, 0.08));
+        for (let f = 3; f < 5; f++) {
+          g.add(mesh(GEO.box, M(0xa8a49a), 25, 1.4 + f * 2.6, -18.6, 8.5, 0.28, 5));
+          for (const cx of [21.2, 25, 28.8]) g.add(mesh(GEO.cyl, M(0x9a968c), cx, 1.4 + f * 2.6 + 1.3, -18.6, 0.22, 2.6, 0.22));
+        }
+        // two spotless SUVs where the ranch trucks used to park
+        for (const [sx, sc] of [[-3.5, 0xf0ece2], [-0.6, 0x2c3038]]) {
+          g.add(mesh(GEO.box, M(sc), sx, 0.78, -9.8, 2.0, 0.9, 4.2));
+          g.add(mesh(GEO.box, M(sc), sx, 1.42, -9.4, 1.85, 0.5, 2.6));
+          g.add(mesh(GEO.box, M(0xbcd8e0, { r: 0.2, m: 0.4 }), sx, 1.44, -9.4, 1.7, 0.4, 2.4));
+          for (const [wx, wz] of [[-0.85, -1.5], [0.85, -1.5], [-0.85, 1.5], [0.85, 1.5]])
+            g.add(mesh(GEO.cyl, M(0x22222a), sx + wx, 0.4, -9.8 + wz, 0.42, 0.24, 0.42, 0, 0, Math.PI / 2));
+        }
+      }),
+    ];
+    for (const s of this.gentStages) castAll(s.g);
+  }
+
+  /** Light the room for the day and the hour. `dy` is the shift number (1-3),
+   *  `f` the 0→1 drift across that shift. Every value is a lerp between the
+   *  slot's opening and closing look, so nothing ever pops. */
+  applyDay(dy, f, dt) {
+    const A = DAY_ARC[Math.min(DAY_ARC.length - 1, Math.max(0, dy - 1))];
+    const L = (a, b) => a + (b - a) * f;
+    // rain flattens and cools everything; snow lifts the ambient (white ground)
+    const wet = this._wxKind === 'rain' ? 1 : 0, snow = this._wxKind === 'snow' ? 1 : 0;
+    this.sun.color.setHex(A.sunA).lerp(this._cB.setHex(A.sunB), f);
+    if (wet) this.sun.color.lerp(this._cB.setHex(0x9fb0c4), 0.45);
+    this.sun.intensity = L(A.sunIA, A.sunIB) * (wet ? 0.5 : 1) * (snow ? 0.8 : 1);
+    this.sun.position.set(L(A.pA[0], A.pB[0]), L(A.pA[1], A.pB[1]), L(A.pA[2], A.pB[2]));
+    this.hemi.intensity = L(A.hemA, A.hemB) * (wet ? 0.85 : 1) + snow * 0.15;
+    this.amb.intensity = L(A.ambA, A.ambB) + wet * 0.06 + snow * 0.05;
+    this._cB2.setHex(A.skyA).lerp(this._cB.setHex(A.skyB), f);
+    if (wet) this._cB2.lerp(this._cB.setHex(0x8d9aa8), 0.5);
+    if (snow) this._cB2.lerp(this._cB.setHex(0xc8cdd4), 0.45);
+    this.scene.background.copy(this._cB2);
+    this.scene.fog.color.copy(this._cB2);
+    // The practicals carry the room once the sun leaves it. ⚠️ this is a
+    // COOKING game — Sunday night still has to be readable enough to tell a
+    // burger from a trout, so the interior floor is deliberately generous.
+    const dark = Math.max(0, Math.min(1, (1 - L(A.sunIA, A.sunIB) / 2.1)));
+    this.pass1.intensity = 0.9 + dark * 2.3;
+    this.pass2.intensity = 0.7 + dark * 2.0;
+    this.amb.intensity += dark * 0.16;
+    this.hemi.intensity += dark * 0.12;
+    if (this.windowGlow) for (const g of this.windowGlow) g.material.opacity = 0.13 * (1 - dark * 0.85);
+    // Elkhorn turns its lights on as the sun goes: invisible at noon, the whole
+    // strip glowing by last call on Sunday. Kept low — it is a warm glow behind
+    // glass, not a light source in the room.
+    if (this.townGlow) this.townGlow.material.emissiveIntensity = 0.03 + dark * 0.8;
+    if (this.motelSign) this.motelSign.material.emissiveIntensity = 0.1 + dark * 1.1;
+    this._night = dark;
+  }
+
+  /** Rain and snow, seen through the glass. Sim-chosen per shift so every
+   *  client sees the same weather; view-only motion. */
+  ensureWeather() {
+    if (this.wxPoints) return;
+    const N = 700;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      pos[i * 3] = -26 + Math.random() * 52;
+      pos[i * 3 + 1] = Math.random() * 11;
+      pos[i * 3 + 2] = -8.5 - Math.random() * 15;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.wxMat = new THREE.PointsMaterial({ color: 0xd8e4ee, size: 0.1, transparent: true, opacity: 0.5, depthWrite: false });
+    this.wxPoints = new THREE.Points(g, this.wxMat);
+    this.wxPoints.visible = false;
+    this.wxPoints.frustumCulled = false;
+    this.scene.add(this.wxPoints);
+    this.wxDrift = new Float32Array(N);
+    for (let i = 0; i < N; i++) this.wxDrift[i] = Math.random() * 6.28;
+  }
+  updateWeather(dt) {
+    const kind = this.snap ? (this.snap.wx || 'clear') : 'clear';
+    this._wxKind = kind;
+    if (kind === 'clear') { if (this.wxPoints) this.wxPoints.visible = false; return; }
+    this.ensureWeather();
+    this.wxPoints.visible = true;
+    const rain = kind === 'rain';
+    this.wxMat.size = rain ? 0.075 : 0.16;
+    this.wxMat.opacity = rain ? 0.45 : 0.8;
+    this.wxMat.color.setHex(rain ? 0xbcd0e0 : 0xfdfdff);
+    const p = this.wxPoints.geometry.attributes.position;
+    const fall = rain ? 17 : 1.6;
+    const t = performance.now() / 1000;
+    for (let i = 0; i < p.count; i++) {
+      p.array[i * 3 + 1] -= fall * dt;
+      if (!rain) {
+        p.array[i * 3] += Math.sin(t * 0.7 + this.wxDrift[i]) * dt * 0.7;
+        p.array[i * 3 + 2] += Math.cos(t * 0.5 + this.wxDrift[i]) * dt * 0.3;
+      } else p.array[i * 3] -= dt * 1.6;
+      if (p.array[i * 3 + 1] < -0.4) {
+        p.array[i * 3] = -26 + Math.random() * 52;
+        p.array[i * 3 + 1] = 10 + Math.random() * 2;
+        p.array[i * 3 + 2] = -8.5 - Math.random() * 15;
+      }
+    }
+    p.needsUpdate = true;
+  }
+
+  // traffic, pedestrians, and the town's slow surrender to money
+  updateTown(dt, snap) {
+    if (!this.traffic) return;
+    const ROAD = -13.2, WALK = -15.6;
+    // gentrification staging (snap.gn is the 🏙️ meter)
+    const gn = snap ? snap.gn : 0;
+    for (const s of this.gentStages) {
+      const want = gn >= s.at;
+      if (s.g.visible !== want) {
+        s.g.visible = want;
+        if (want && this.onGentStage) this.onGentStage(s.at);
+      }
+    }
+    if (this.motelSign) this.motelSign.material.color.setHex(gn >= 82 ? 0xc9a227 : 0x3a5a8a);
+    // traffic
+    this.trafficT -= dt;
+    if (this.trafficT <= 0) {
+      this.trafficT = 3 + Math.random() * 7;
+      const free = this.traffic.find(v => !v.visible);
+      if (free) {
+        const east = Math.random() < 0.5;
+        const gentrified = (snap ? snap.gn : 0) >= 66 && Math.random() < 0.5;
+        const col = gentrified ? [0xf0ece2, 0x2c3038, 0x8a8f98][Math.floor(Math.random() * 3)]
+          : [0x9a4a32, 0x4f6f46, 0x6b5540, 0x8a7a5a][Math.floor(Math.random() * 4)];
+        free.userData.body.material = M(col);
+        free.userData.cab.material = M(col);
+        free.visible = true;
+        free.position.set(east ? -46 : 46, 0, east ? ROAD + 1.05 : ROAD - 1.05);
+        free.rotation.y = east ? Math.PI / 2 : -Math.PI / 2;
+        free.userData.v = (east ? 1 : -1) * (7 + Math.random() * 5);
+      }
+    }
+    for (const v of this.traffic) {
+      if (!v.visible) continue;
+      v.position.x += v.userData.v * dt;
+      if (v.position.x > 48 || v.position.x < -48) v.visible = false;
+    }
+    // pedestrians
+    this.walkerT -= dt;
+    if (this.walkerT <= 0) {
+      this.walkerT = 6 + Math.random() * 12;
+      const free = this.walkers.find(w => !w.visible);
+      if (free) {
+        const east = Math.random() < 0.5;
+        free.visible = true;
+        free.position.set(east ? -34 : 34, 0, WALK + (Math.random() - 0.5) * 0.5);
+        free.rotation.y = east ? Math.PI / 2 : -Math.PI / 2;
+        free.userData.v = (east ? 1 : -1) * (1.1 + Math.random() * 0.5);
+      }
+    }
+    for (const w of this.walkers) {
+      if (!w.visible) continue;
+      w.position.x += w.userData.v * dt;
+      w.userData.ph += dt * 7;
+      w.userData.legL.rotation.x = Math.sin(w.userData.ph) * 0.6;
+      w.userData.legR.rotation.x = -Math.sin(w.userData.ph) * 0.6;
+      w.position.y = Math.abs(Math.sin(w.userData.ph)) * 0.03;
+      if (w.position.x > 36 || w.position.x < -36) w.visible = false;
+    }
   }
 
   // ---- the supply yard: meadow, river, docks, bushes, the F-250, payphone -----
@@ -1558,16 +1891,14 @@ export class World {
       bg.position.y = walking ? Math.abs(Math.sin(bph * 0.5)) * 0.05 : 0;
       bg.rotation.x += ((bd.st === 'eat' ? 0.35 : 0) - bg.rotation.x) * lerpK;
     }
-    // sun drift: noon → golden hour across the shift (morning gold in the lobby)
+    // ── the day arc: three shifts, three times of day ──────────────────────
+    // Friday morning → Saturday afternoon → Sunday dusk. Each shift also drifts
+    // within its own slot, so the light is never once static.
     const dayTgt = this.simPh === 'shift' ? Math.min(1, this.simT / C.SHIFT_LEN) : (this.simPh === 'lobby' || this.simPh === 'count') ? 0 : 1;
     this._dayF += (dayTgt - this._dayF) * Math.min(1, dt * 0.5);
-    const f01 = this._dayF;
-    this.sun.color.setHex(0xffe9c4).lerp(this._cB.setHex(0xff9a52), f01);
-    this.sun.intensity = 1.35 - 0.18 * f01;
-    this.sun.position.set(-7 + 10 * f01, 11 - 2.5 * f01, 5 - 5 * f01);
-    this.hemi.intensity = 0.95 - 0.18 * f01;
-    this.scene.background.setHex(0xf7cf9e).lerp(this._cB2.setHex(0xefa06b), f01);
-    this.scene.fog.color.copy(this.scene.background);
+    this.applyDay(this.snap ? (this.snap.dy || 1) : 1, this._dayF, dt);
+    this.updateTown(dt, this.snap);
+    this.updateWeather(dt);
     if (this.snap && this.snap.fi && this.snap.fi.length) {
       const f0 = this.snap.fi[0];
       this.fireLight.position.set(f0.x, 1.5, f0.z);
@@ -1655,6 +1986,30 @@ function face(head, opt = {}) {
   if (opt.mouth) head.add(mesh(GEO.box, M(0x8a4a44, { r: 0.5 }), 0, -0.17, ez - 0.02, opt.mouth, 0.035, 0.04));
 }
 function castAll(g) { g.traverse(o => { if (o.isMesh && o.material !== shadowMat) o.castShadow = true; }); return g; }
+// ── the day arc ─────────────────────────────────────────────────────────────
+// One entry per shift of the season: Friday MORNING, Saturday AFTERNOON,
+// Sunday DUSK. A/B are the look at the open and at last call; everything
+// between is a lerp, so the light moves the whole time you're working.
+const DAY_ARC = [
+  { // FRIDAY — cold early light, sun low in the east, long shadows west
+    sunA: 0xffd9a8, sunB: 0xfff0d0, sunIA: 1.45, sunIB: 2.05,
+    pA: [14, 6.5, 3], pB: [6, 12, 4],
+    hemA: 1.0, hemB: 1.15, ambA: 0.5, ambB: 0.56,
+    skyA: 0xb6d2ea, skyB: 0xd6e4ee,
+  },
+  { // SATURDAY — high flat noon sliding into the gold
+    sunA: 0xfff4dc, sunB: 0xffcf94, sunIA: 2.1, sunIB: 1.75,
+    pA: [2, 14.5, 5], pB: [-9, 8.5, 6],
+    hemA: 1.15, hemB: 1.0, ambA: 0.56, ambB: 0.5,
+    skyA: 0xbcd8ee, skyB: 0xf2cf9e,
+  },
+  { // SUNDAY — dusk to dark. The room stops being lit from outside at all.
+    sunA: 0xff9a52, sunB: 0x6a5f8a, sunIA: 1.25, sunIB: 0.3,
+    pA: [-12, 5.5, 6], pB: [-19, 1.2, 7],
+    hemA: 0.9, hemB: 0.52, ambA: 0.5, ambB: 0.54,
+    skyA: 0xefa06b, skyB: 0x2b3350,
+  },
+];
 // where loaded items sit on a carried tray (flat triangle, not a vertical armload)
 const TRAY_SPOTS = [[0, 0.07, 0.1], [-0.2, 0.07, -0.12], [0.2, 0.07, -0.12]];
 // tiny solid-colour textures for billboard bars (patience under order bubbles)

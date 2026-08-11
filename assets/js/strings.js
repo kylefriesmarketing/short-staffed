@@ -99,6 +99,13 @@ export const STR = {
   seqTag: 'SEQUOIA 🤳',
   evToasts: {
     open: '☀️ The Grubstake is OPEN. Here they come.',
+    wx_rain: '🌧️ Rain on the glass. The lot is going to be slick.',
+    wx_snow: '❄️ Snow. In Elkhorn that just means Tuesday.',
+    gent_18: '🏙️ The hardware store has a FOR LEASE sign in the window.',
+    gent_34: '🏙️ Scaffolding went up across the road overnight.',
+    gent_50: '🏙️ The hardware store is a juice bar now. It has a lowercase name.',
+    gent_66: '🏙️ There is a CRANE on Main Street. Something tall is coming.',
+    gent_82: '🏙️ The condos have a banner. The motel is a "boutique property."',
     lastcall: '🌙 Last call! Doors locked at close.',
     ignite: '🔥 GREASE FIRE!',
     douse: 'Fire out. Nobody tell the inspector.',

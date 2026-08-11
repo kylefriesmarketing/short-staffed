@@ -220,9 +220,13 @@ export class Sim {
     this.pstats = {};
     this.spills = []; this.mopOut = false; this._sinkDrip = 0; this._sinkWarned = false;
     this.insp = null;
+    this.weather = 'clear';
     this.pigInit();
     this.drcInit();
   }
+  // Montana: mostly clear, sometimes wet, occasionally the other thing.
+  // Seeded so every client in a room sees the SAME sky.
+  rollWeather() { const r = this.r(); this.weather = r < 0.26 ? 'rain' : r < 0.38 ? 'snow' : 'clear'; }
   pigInit() {
     this.gate = 'ok'; this.gunShells = C.GUN_SHELLS; this.gunOut = false;
     this.pigs = [];
@@ -309,7 +313,7 @@ export class Sim {
     for (const [pid, p] of [...this.players]) {
       if (!p.conn) { p.graceT -= dt; if (p.graceT <= 0) { this.dropAll(p); this.players.delete(pid); } }
     }
-    if (this.ph === 'count') { this.cd -= dt; if (this.cd <= 0) { this.ph = 'shift'; this.t = 0; this.rentTg = this.rentTarget(); this.push({ k: 'open' }); } }
+    if (this.ph === 'count') { this.cd -= dt; if (this.cd <= 0) { this.ph = 'shift'; this.t = 0; this.rentTg = this.rentTarget(); this.rollWeather(); this.push({ k: 'open', wx: this.weather }); } }
     if (this.ph === 'shift') { this.t += dt; this.shiftDirector(dt); this.updateInspector(dt); if (this.t >= C.SHIFT_LEN) { this.ph = 'close'; this.cd = C.CLOSE_LEN; this.push({ k: 'lastcall' }); } }
     if (this.ph === 'shift' || this.ph === 'close' || this.ph === 'supply' || this.ph === 'prep') this.updatePigs(dt);
     if (this.ph === 'close') {
@@ -1067,10 +1071,19 @@ export class Sim {
     // 3. stations
     if (this.stationAct(p, held)) return;
     // 4. taps (a tray under the spout takes the pour straight onto the tray)
+    // ⚠️ NEAREST, not first: the two taps are 0.8 apart and the crates 1.0, so a
+    // first-match scan hands you coffee (or batter) no matter which one you are
+    // actually standing at. Aim has to beat array order.
     const heldTray = held && held.k === 'tray';
-    for (let i = 0; i < LAYOUT.taps.length; i++) {
-      const tp = LAYOUT.taps[i];
-      if (this.near(p, tp) && (!held || (heldTray && p.stack.length < C.TRAY_CAP)) && this.st.taps[i] <= 0) {
+    const nearestIdx = (arr) => {
+      let bi = -1, bd = C.REACH * C.REACH;
+      for (let i = 0; i < arr.length; i++) { const d = d2(p.x, p.z, arr[i].x, arr[i].z); if (d < bd) { bd = d; bi = i; } }
+      return bi;
+    };
+    {
+      const i = nearestIdx(LAYOUT.taps);
+      const tp = i >= 0 ? LAYOUT.taps[i] : null;
+      if (tp && (!held || (heldTray && p.stack.length < C.TRAY_CAP)) && this.st.taps[i] <= 0) {
         const pourT = this.up('espresso') ? 0.45 : C.POUR_T;
         p.busyT = pourT; this.st.taps[i] = pourT;
         const mug = this.spawnItem('mug', tp.x, 1, tp.z, { fill: tp.fill });
@@ -1082,8 +1095,11 @@ export class Sim {
     }
     // 5. shelf
     if (this.near(p, LAYOUT.shelf) && !held && this.st.shelf > 0) { this.st.shelf--; const pl = this.spawnItem('plate', p.x, 1, p.z); pl.holder = p.pid; p.held = pl.id; return; }
-    // 6. crates
-    for (const cr of LAYOUT.crates) if (this.near(p, cr) && !held) { const it = this.spawnItem('raw', cr.x, 1, cr.z, { ing: cr.ing }); it.holder = p.pid; p.held = it.id; return; }
+    // 6. crates — nearest wins (they sit 1.0 apart; see the tap note above)
+    if (!held) {
+      const ci = nearestIdx(LAYOUT.crates);
+      if (ci >= 0) { const cr = LAYOUT.crates[ci]; const it = this.spawnItem('raw', cr.x, 1, cr.z, { ing: cr.ing }); it.holder = p.pid; p.held = it.id; return; }
+    }
     // 7. extinguisher hook
     if (this.near(p, LAYOUT.extHook) && !held && !this.extOut) { this.extOut = true; const ex = this.spawnItem('ext', p.x, 1, p.z); ex.holder = p.pid; p.held = ex.id; return; }
     // 7c. the varmint gun sleeps under the register; the pen gate takes hands
@@ -2211,7 +2227,7 @@ export class Sim {
       mo: this.mopOut ? 1 : 0,
       pg: this.pigs.map(q => ({ i: q.id, x: R2(q.x), y: R2(q.y || 0), z: R2(q.z), yw: R2(q.yaw || 0), st: q.st, in: q.inside ? 1 : 0, et: q.eatT > 0 ? 1 : 0 })),
       gt: this.gate === 'broken' ? 1 : 0, gsh: this.gunShells, go: this.gunOut ? 1 : 0,
-      bt: Math.ceil(this.busT || 0),
+      bt: Math.ceil(this.busT || 0), wx: this.weather,
       tk: this.tickets.map(t => ({
         i: t.id, tb: t.table, sl: t.stool,
         ln: t.ln.map(l => ({ d: t.kale && !l.ok ? '?' : l.d, ok: l.ok ? 1 : 0 })),
