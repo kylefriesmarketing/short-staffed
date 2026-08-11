@@ -5,7 +5,7 @@ import { World } from './world.js';
 import { STR } from './strings.js';
 import { Net } from './net.js';
 import { Voice } from './rtc.js';
-import { audioInit, sfx, beds, banjoLoop, setListener } from './audio.js';
+import { audioInit, sfx, beds, banjoLoop, setListener, ambience, pressure, ambState } from './audio.js';
 
 const $ = id => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
@@ -77,6 +77,7 @@ function doJoin() {
   world.fp = fpMode; world.look = look;
   // the town changing is a story beat, not scenery — say it out loud once
   world.onGentStage = at => { const k = 'gent_' + at; if (STR.evToasts[k]) toast(STR.evToasts[k], 'll'); };
+  world.onTraffic = (x, z) => sfx('carpass', x, z);
   setTimeout(lockPointer, 60);
   if (LOCAL) {
     localSim = new Sim((Date.now() / 1000 | 0) % 100000);
@@ -285,6 +286,9 @@ function applySnap(s) {
   const cooking = s.st.gr.filter(Boolean).length + s.st.pn.filter(Boolean).length;
   const burning = [...s.st.gr, ...s.st.pn].filter(x => x && (x.s === 'burning' || x.s === 'burnt')).length;
   beds({ sizzle: cooking + burning * 1.5, crowd: s.cu.length, fire: s.fi.length });
+  // the outdoors, mixed by the sky: rain, wind, crickets, morning birds.
+  // `_night` is the day arc's own darkness value, so the mix tracks the light.
+  ambience({ wx: s.wx || 'clear', night: world ? (world._night || 0) : 0, indoors: s.ph !== 'supply' });
   // phase UI
   if (s.ph === 'lobby') { $('lobby').style.display = 'flex'; if (joined) $('hint').textContent = mySeat < 0 ? STR.spectating : STR.waiting; }
   else $('lobby').style.display = 'none';
@@ -341,6 +345,8 @@ function applySnap(s) {
   if (s.bt > 0 && s.bt <= C.BUS_WARN) danger += 0.25;
   if (s.cu.some(c => c.ty === 'inspector' && !['leave', 'out'].includes(c.st)) && ((s.spl || []).length || s.fi.length)) danger += 0.2;
   $('dangervig').style.opacity = Math.min(1, danger) * 0.6;
+  // the same honest score drives the mix: the room gets louder as it goes wrong
+  pressure(s.ph === 'shift' ? Math.min(1, danger) : 0);
   // your ability chip (outside hudKey — the cooldown ticks every second)
   const meP = mySeat >= 0 && s.pl.find(q => q.i === mySeat);
   if (meP && meP.h && meP.h.k === 'gun') {
@@ -681,5 +687,5 @@ window.__ss = {
   input: o => { Object.assign(input, o); if (o.a === '+') input.a++; if (o.th === '+') input.th++; },
   press: () => { input.a++; },
   yeet: () => { input.th++; },
-  net: () => net, sim: () => localSim, world: () => world,
+  net: () => net, sim: () => localSim, world: () => world, amb: () => ambState(),
 };

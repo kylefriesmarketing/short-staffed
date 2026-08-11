@@ -4,8 +4,22 @@ let ac = null, master = null, noiseBuf = null;
 let listX = 0, listZ = 0;
 let sizzleG = null, murmurG = null, murmurN = null, sizzleN = null, fireG = null, fireN = null;
 let banjoTimer = null;
+let rainB = null, rainLoB = null, windB = null, cricketB = null, roomB = null;
+let birdAt = 0, _ambPhase = '';
 
 export function getAC() { return ac; }
+/** QA hook: the live mix, as numbers. Audio can't be judged from a headless
+ *  pane by ear, so the beds are readable instead (see __ss.amb()). */
+export function ambState() {
+  if (!ac || !rainB) return null;
+  return {
+    rain: +rainB.g.gain.value.toFixed(4), rainLo: +rainLoB.g.gain.value.toFixed(4),
+    wind: +windB.g.gain.value.toFixed(4), crickets: +cricketB.g.gain.value.toFixed(4),
+    room: +roomB.g.gain.value.toFixed(4),
+    sizzle: +sizzleG.gain.value.toFixed(4), crowd: +murmurG.gain.value.toFixed(4), fire: +fireG.gain.value.toFixed(4),
+    pulse: +pulseLvl.toFixed(3), state: ac.state,
+  };
+}
 export function audioInit() {
   if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
   ac = new (window.AudioContext || window.webkitAudioContext)();
@@ -26,6 +40,29 @@ export function audioInit() {
   fireN = src(); const ff = ac.createBiquadFilter(); ff.type = 'lowpass'; ff.frequency.value = 900;
   fireG = ac.createGain(); fireG.gain.value = 0;
   fireN.connect(ff); ff.connect(fireG); fireG.connect(master); fireN.start();
+  // ── the world outside, audible ──────────────────────────────────────────
+  // Rain on the roof, wind under snow, crickets at dusk, and the low hum a
+  // building always has. Everything the windows show now has a sound.
+  const bed = (type, freq, q, gain) => {
+    const n = src(); const f = ac.createBiquadFilter();
+    f.type = type; f.frequency.value = freq; if (q) f.Q.value = q;
+    const g = ac.createGain(); g.gain.value = 0;
+    n.connect(f); f.connect(g); g.connect(master); n.start();
+    return { g, f, n };
+  };
+  rainB = bed('bandpass', 2400, 0.35);          // hiss on the glass
+  rainLoB = bed('lowpass', 220);                // the drum of it on the roof
+  windB = bed('lowpass', 420);
+  cricketB = bed('bandpass', 4600, 14);         // dusk field, gated by an LFO
+  const clfo = ac.createOscillator(), clg = ac.createGain();
+  clfo.type = 'square'; clfo.frequency.value = 11; clg.gain.value = 0.5;
+  clfo.connect(clg); clg.connect(cricketB.g.gain); clfo.start();
+  // slow gusting on the wind so it never sits still
+  const wlfo = ac.createOscillator(), wlg = ac.createGain();
+  wlfo.frequency.value = 0.09; wlg.gain.value = 0.5;
+  wlfo.connect(wlg); wlg.connect(windB.f.frequency); wlfo.start();
+  roomB = bed('lowpass', 110);                  // fridge + vent, always there
+  roomB.g.gain.value = 0.03;
 }
 function src() { const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true; return s; }
 export function setListener(x, z) { listX = x; listZ = z; }
@@ -126,9 +163,69 @@ export function banjoLoop(on, style = 'banjo') {
 export function beds({ sizzle, crowd, fire }) {
   if (!ac) return;
   const t = ac.currentTime;
-  sizzleG.gain.linearRampToValueAtTime(Math.min(0.16, sizzle * 0.06), t + 0.2);
-  murmurG.gain.linearRampToValueAtTime(Math.min(0.12, crowd * 0.012), t + 0.4);
-  fireG.gain.linearRampToValueAtTime(Math.min(0.22, fire * 0.055), t + 0.15);
+  sizzleG.gain.setTargetAtTime(Math.min(0.16, sizzle * 0.06), t, 0.12);
+  murmurG.gain.setTargetAtTime(Math.min(0.12, crowd * 0.012), t, 0.25);
+  fireG.gain.setTargetAtTime(Math.min(0.22, fire * 0.055), t, 0.09);
+}
+/** The outdoors, mixed by weather and hour. `night` 0→1 across the day arc,
+ *  `wx` the sim's seeded weather. Called every frame; all ramps are slow so
+ *  the mix drifts rather than switches. */
+export function ambience({ wx, night, indoors }) {
+  if (!ac || !rainB) return;
+  const t = ac.currentTime;
+  const rain = wx === 'rain' ? 1 : 0, snow = wx === 'snow' ? 1 : 0;
+  // glass muffles it: the diner is inside, so nothing outside is ever loud
+  const thru = indoors === false ? 1 : 0.55;
+  // ⚠️ setTargetAtTime, NOT linearRampToValueAtTime. These targets are updated
+  // every frame; scheduling a fresh linear ramp each time stacks automation
+  // events and the value stops tracking (measured: crickets stayed up through
+  // a switch back to morning). setTargetAtTime is the idiom for a live target.
+  const to = (p, v) => p.setTargetAtTime(v, t, 0.6);
+  to(rainB.g.gain, rain * 0.055 * thru);
+  to(rainLoB.g.gain, rain * 0.05 * thru);
+  to(windB.g.gain, (snow * 0.05 + rain * 0.018) * thru);
+  // crickets only after the light goes, and never over rain
+  // ⚠️ tuned against the MEASURED day arc: `night` only reaches ~0.8 at Sunday
+  // last call, so a 0.45 threshold made crickets inaudible. 0.32 with a bigger
+  // multiplier means dusk actually sounds like dusk.
+  to(cricketB.g.gain, Math.max(0, night - 0.32) * 0.1 * (1 - rain) * thru);
+  // morning birdsong: sparse, random, only while it is bright and dry
+  if (night < 0.45 && !rain && !snow && ac.currentTime > birdAt) {
+    birdAt = ac.currentTime + 4 + Math.random() * 9;
+    const f0 = 2100 + Math.random() * 1400;
+    const n = 2 + (Math.random() * 3 | 0);
+    for (let i = 0; i < n; i++) birdChirpAt(i * (0.07 + Math.random() * 0.06), f0);
+  }
+}
+/** The shift has no melody on purpose — you need to hear the room. What it
+ *  gets instead is a PULSE: a low floor-tom heartbeat that speeds up and digs
+ *  in as the night goes wrong. Silent when things are fine, which is what
+ *  makes it mean something when it starts. */
+let pulseAt = 0, pulseLvl = 0;
+export function pressure(level) {
+  if (!ac) return;
+  pulseLvl += (Math.max(0, Math.min(1, level)) - pulseLvl) * 0.04;   // slow to arrive, slow to leave
+  if (pulseLvl < 0.12) return;
+  const now = ac.currentTime;
+  if (now < pulseAt) return;
+  const period = 1.15 - pulseLvl * 0.55;                              // 1.15s calm → 0.6s frantic
+  pulseAt = now + period;
+  const v = 0.05 + pulseLvl * 0.16;
+  tone(58, 40, 0.34, 'sine', v, null, null, 'exp');
+  if (pulseLvl > 0.55) setTimeout(() => noise(0.1, 0.02 * pulseLvl, 3000, 7000), period * 500);
+}
+function birdChirpAt(delay, f0) {
+  if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain();
+  const t = ac.currentTime + delay;
+  o.type = 'sine';
+  o.frequency.setValueAtTime(f0 * (0.9 + Math.random() * 0.4), t);
+  o.frequency.exponentialRampToValueAtTime(f0 * (1.2 + Math.random() * 0.5), t + 0.05);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(0.022, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + 0.12);
 }
 export function sfx(k, x, z) {
   if (!ac) return;
@@ -190,6 +287,9 @@ export function sfx(k, x, z) {
     case 'pighome': tone(440, 560, 0.1, 'sawtooth', 0.1, x, z); setTimeout(() => tone(560, 480, 0.12, 'sawtooth', 0.09, x, z), 120); break;
     // phase turn: a low timpani hit + a rising swell — the night changes gear
     case 'phase': tone(98, 96, 0.7, 'sine', 0.3); noise(0.5, 0.1, 60, 300); setTimeout(() => tone(147, 196, 0.5, 'triangle', 0.14), 240); break;
+    // a truck going by on the highway: muffled through the glass, panned by
+    // where it actually is, with the low end arriving under the hiss
+    case 'carpass': noise(1.5, 0.045, 180, 900, x, z); tone(88, 66, 1.4, 'sawtooth', 0.035, x, z, 'exp'); break;
     case 'openfault': noise(0.2, 0.2, 1400, 4200); tone(2200, 1100, 0.14, 'square', 0.05); break;
     case 'busin': noise(0.8, 0.14, 200, 900); tone(155, 110, 0.5, 'sawtooth', 0.1, x, z, 'exp'); break;
     case 'buswarn': tone(233, 233, 0.18, 'sawtooth', 0.12); setTimeout(() => tone(233, 233, 0.18, 'sawtooth', 0.12), 240); break;

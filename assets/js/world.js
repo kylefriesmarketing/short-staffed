@@ -980,7 +980,10 @@ export class World {
     }
     for (const v of this.traffic) {
       if (!v.visible) continue;
+      const was = v.position.x;
       v.position.x += v.userData.v * dt;
+      // it gets its sound when it actually passes the diner, not when it spawns
+      if (was < 0 !== v.position.x < 0 && this.onTraffic) this.onTraffic(v.position.x, v.position.z);
       if (v.position.x > 48 || v.position.x < -48) v.visible = false;
     }
     // pedestrians
