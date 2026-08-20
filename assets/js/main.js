@@ -4,6 +4,7 @@ import { Sim, C, LAYOUT, SOLIDS, UPGRADES, DIR } from './sim.js';
 import { World } from './world.js';
 import { STR } from './strings.js';
 import { Net } from './net.js';
+import { PeerNet } from './net-peer.js';
 import { Voice } from './rtc.js';
 import { audioInit, sfx, beds, banjoLoop, setListener, ambience, pressure, ambState } from './audio.js';
 
@@ -15,11 +16,9 @@ const DEV = qs.has('dev');
 // ---- room code ----------------------------------------------------------------
 function genCode() { const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 let ROOM = (qs.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-if (!ROOM && !LOCAL) {
-  ROOM = genCode();
-  const u = new URL(location.href); u.searchParams.set('room', ROOM);
-  history.replaceState(null, '', u);
-}
+// ⚠️ no auto-room any more. A room now comes from HOSTing one (the host deals
+// the code) or from arriving on a ?room= link. Auto-generating a code on load
+// dropped every fresh tab into its own empty room and called it multiplayer.
 function pid() {
   let p = sessionStorage.getItem('ss-pid');
   if (!p) { p = (crypto.randomUUID ? crypto.randomUUID() : 'p' + Math.random().toString(36).slice(2)); sessionStorage.setItem('ss-pid', p); }
@@ -28,7 +27,7 @@ function pid() {
 
 // ---- state ----------------------------------------------------------------------
 let world = null, net = null, localSim = null, localAcc = 0, localTick = 0, voice = null;
-let mySeat = -2, lastSnap = null, joined = false, overShown = false, countLast = -1, howtoShown = false;
+let mySeat = -2, isHost = false, lastSnap = null, joined = false, overShown = false, countLast = -1, howtoShown = false;
 const evLog = [];
 const input = { x: 0, z: 0, fx: 0, fz: -1, a: 0, th: 0, ah: false, sp: false };
 const pred = { x: 0, z: 0, vx: 0, vz: 0, fx: 0, fz: -1, mv: 0, has: false };
@@ -53,8 +52,29 @@ document.querySelectorAll('.swatch').forEach((el, i) => {
   el.classList.toggle('sel', i === myColor);
   el.onclick = () => { myColor = i; localStorage.setItem('ss-color', i); document.querySelectorAll('.swatch').forEach((e2, j) => e2.classList.toggle('sel', j === i)); sfx('click'); };
 });
-$('join').onclick = () => { audioInit(); doJoin(); };
-// Hazel helps: solo practice only (the room server seats humans)
+$('join').onclick = () => { audioInit(); doJoin(LOCAL ? null : 'host'); };
+if (!LOCAL) {
+  // CLOCK IN opens YOUR diner. Alone that is simply solo — and the invite link
+  // is live from the first second, so friends drop in mid-shift without a lobby.
+  $('coop').style.display = 'flex';
+  $('t-orjoin').textContent = STR.orJoin;
+  $('join-btn').textContent = STR.joinBtn;
+  $('join-code').placeholder = STR.codePh;
+  $('join-code').value = ROOM || '';
+  const goJoin = () => {
+    const c = ($('join-code').value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    if (!c) { $('join-code').focus(); return; }
+    audioInit(); ROOM = c; doJoin('join');
+  };
+  $('join-btn').onclick = goJoin;
+  $('join-code').addEventListener('keydown', e => { if (e.key === 'Enter') goJoin(); });
+  // Hazel can work a hosted shift too — the host runs a real Sim
+  $('botrow').style.display = 'flex';
+  $('t-bot').textContent = STR.botRow;
+  $('botcheck').checked = localStorage.getItem('ss-bot') === '1';
+  $('botcheck').onchange = () => localStorage.setItem('ss-bot', $('botcheck').checked ? '1' : '0');
+}
+// Hazel helps in offline practice too (the hosted path wires her above)
 if (LOCAL) {
   $('botrow').style.display = 'flex';
   $('t-bot').textContent = STR.botRow;
@@ -69,7 +89,7 @@ $('again').textContent = STR.again;
 $('again').onclick = () => { audioInit(); if (LOCAL) localSim.again(); else net.again(); $('endcard').style.display = 'none'; overShown = false; };
 if (DEV) $('dev').style.display = 'block';
 
-function doJoin() {
+function doJoin(mode) {
   const name = ($('name').value || 'Cook').slice(0, 16);
   localStorage.setItem('ss-name', name);
   $('joinrow').classList.add('joined'); // collapse the picker; the panel stays for hint + invite
@@ -79,6 +99,7 @@ function doJoin() {
   world.onGentStage = at => { const k = 'gent_' + at; if (STR.evToasts[k]) toast(STR.evToasts[k], 'll'); };
   world.onTraffic = (x, z) => sfx('carpass', x, z);
   setTimeout(lockPointer, 60);
+  if (!LOCAL && mode) { startPeer(mode, name); return; }
   if (LOCAL) {
     localSim = new Sim((Date.now() / 1000 | 0) % 100000);
     mySeat = localSim.join('me', name, myColor);
@@ -113,6 +134,52 @@ function doJoin() {
     };
     $('mic').textContent = STR.vcOff;
     $('mic').onclick = () => { audioInit(); voice.toggle(); };
+  }
+}
+
+/** Co-op without a server: one of you IS the room. The host runs the sim in its
+ *  own tab and relays to the others, so the online game is always whatever build
+ *  the host just loaded — it can never drift behind the client again. */
+async function startPeer(mode, name) {
+  const code = mode === 'host' ? genCode() : ROOM;
+  const handlers = {
+    hello(m) {
+      mySeat = m.you; joined = true;
+      isHost = !!m.host;
+      $('roomchip').textContent = STR.roomChip + ': ' + m.room;
+      $('invite').style.display = 'flex';
+      $('t-invite').textContent = m.host ? STR.inviteHost : STR.invite;
+      $('hint').textContent = mySeat < 0 ? STR.spectating : STR.waiting;
+      const u = new URL(location.href); u.searchParams.set('room', m.room); history.replaceState(null, '', u);
+      ROOM = m.room;
+      applySnap(m.snap);
+      banjoLoop(true);
+      if (mySeat >= 0) $('mic').style.display = '';
+    },
+    snap(s) { applySnap(s); },
+    ev(e) { onEvent(e); },
+    rtc(m) { if (voice) voice.onSignal(m); },
+    roster(n) { $('roomchip').textContent = `${STR.roomChip}: ${ROOM} · ${n}/4`; },
+    status(s) {
+      if (s === 'hostlost') { toast(STR.hostLost, 'fire'); return; }
+      if (!lastSnap || lastSnap.ph === 'lobby') $('hint').textContent = s === 'connecting' ? STR.connecting : STR.reconnecting;
+    },
+  };
+  net = new PeerNet(handlers);
+  voice = new Voice(net, () => mySeat, () => lastSnap);
+  voice.onstate = st => {
+    $('mic').textContent = st === 'on' ? STR.vcOn : st === 'err' ? STR.vcErr : st === 'conn' ? STR.vcConn : STR.vcOff;
+    $('mic').classList.toggle('live', st === 'on');
+  };
+  $('mic').textContent = STR.vcOff;
+  $('mic').onclick = () => { audioInit(); voice.toggle(); };
+  try {
+    $('hint').textContent = mode === 'host' ? STR.opening : STR.connecting;
+    if (mode === 'host') await net.host(code, { pid: pid(), name, color: myColor, bot: $('botcheck').checked });
+    else await net.join(code, { pid: pid(), name, color: myColor });
+  } catch (e) {
+    $('joinrow').classList.remove('joined');
+    $('hint').textContent = String((e && e.message) || e);
   }
 }
 

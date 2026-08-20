@@ -32,7 +32,7 @@ export const STR = {
   // six tracks + attributed swings (the aftermath card)
   trk: { cash: '💵 RENT', hosp: '🍽️ HOSPITALITY', cred: '🤝 LOCAL CRED', gent: '🏙️ GENTRIFICATION', heat: '🚨 HEAT', chaos: '🐷 CHAOS' },
   swingsHead: 'The night, attributed',
-  botRow: '🤝 Hazel helps (solo practice: she cooks, serves, washes, douses)',
+  botRow: '🤝 Hazel works the shift with you (cooks, serves, washes, douses)',
   phases: { compression: 'THE RUSH', break: 'THE BREAK POINT', last_call: 'LAST CALL' },
   swings: {
     sv: '{N} served {C} plates.',
@@ -51,6 +51,12 @@ export const STR = {
     ca: '{N} landed {C} trout.',
   },
   invite: 'Send this link to your crew:',
+  inviteHost: 'You are the diner. Send this to your crew:',
+  orJoin: 'or join a friend:',
+  joinBtn: 'JOIN',
+  codePh: 'CODE',
+  opening: 'Opening the diner…',
+  hostLost: 'The host closed the diner. Everyone out.',
   copy: 'COPY LINK',
   copied: 'Copied!',
   waiting: 'Walk to the front door and flip the sign to open.',

@@ -44,6 +44,14 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
   #join:hover { filter: brightness(1.1); }
   #t-controls { color: rgba(244,235,221,.6); font-size: 12px; line-height: 1.7; margin-top: 6px; }
   #t-controls b { color: var(--gold); }
+  /* co-op row: host a diner, or type a friend's code */
+  #coop { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 2px; }
+  #coop button { font-family: inherit; font-size: 13px; letter-spacing: 1px; padding: 8px 14px; color: var(--cream);
+                 background: rgba(143,184,173,.14); cursor: pointer; border: 1px solid rgba(143,184,173,.45); border-radius: 6px; }
+  #coop button:hover { border-color: var(--gold); }
+  #join-code { width: 86px; text-align: center; font-family: inherit; font-size: 15px; letter-spacing: 3px;
+               text-transform: uppercase; padding: 7px 4px; color: var(--gold); background: rgba(24,16,10,.8);
+               border: 1px solid rgba(143,184,173,.45); border-radius: 6px; }
   /* after CLOCK IN the panel shrinks to the waiting room: hint + invite only */
   #joinrow.joined #swatches, #joinrow.joined #name, #joinrow.joined #join { display: none; }
   #hint { color: var(--gold); font-size: clamp(14px, 2.4vw, 17px); font-weight: 700; }
@@ -221,6 +229,11 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
     <div id="t-apron" style="display:none"></div>
     <label id="botrow" style="display:none"><input type="checkbox" id="botcheck"> <span id="t-bot"></span></label>
     <button id="join"></button>
+    <div id="coop" style="display:none">
+      <span id="t-orjoin"></span>
+      <input id="join-code" maxlength="8" autocomplete="off">
+      <button id="join-btn"></button>
+    </div>
     <div id="hint"></div>
     <div id="invite"><span id="t-invite"></span><button id="copy"></button></div>
     <div id="roomchip"></div>
@@ -258,6 +271,6 @@ prefer the chrome-free view it exposes so the diner fills the whole window */
 <div class="tbtn" id="btnA">A</div>
 <div class="tbtn" id="btnB">✋</div>
 <div id="dev"></div>
-<script type="module" src="./assets/js/main.js?v=r13"></script>
+<script type="module" src="./assets/js/main.js?v=r14"></script>
 </body>
 </html>
